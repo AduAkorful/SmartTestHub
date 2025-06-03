@@ -1,0 +1,48 @@
+version: "3.9"
+
+services:
+  traefik:
+    image: traefik:v2.9
+    command:
+      - --api.insecure=true
+      - --providers.docker=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.ws.address=:9000
+      - --certificatesresolvers.myresolver.acme.tlschallenge=true
+      - --certificatesresolvers.myresolver.acme.email=jeffquaye36@gmail.com
+      - --certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json
+    ports:
+      - "80:80"
+      - "443:443"
+      - "9000:9000"
+      - "8081:8081"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
+
+  evm:
+    image: ghcr.io/foundry-rs/foundry:latest
+    container_name: evm-container
+    working_dir: /app
+    volumes:
+      - ./evm:/app
+    command: /bin/bash
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.evm.rule=Host(`evm.smarttesthub.local`)"
+      - "traefik.http.routers.evm.entrypoints=websecure,ws"
+      - "traefik.http.routers.evm.tls.certresolver=myresolver"
+      - "traefik.http.services.evm.loadbalancer.server.port=8545"
+
+  non-evm:
+    build:
+      context: ./non-evm
+    entrypoint: ["/entrypoint.sh"]
+    container_name: non-evm-container
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nonevm.rule=Host(`nonevm.smarttesthub.local`)"
+      - "traefik.http.routers.nonevm.entrypoints=websecure,ws"
+      - "traefik.http.routers.nonevm.tls.certresolver=myresolver"
+      - "traefik.http.services.nonevm.loadbalancer.server.port=8081"
