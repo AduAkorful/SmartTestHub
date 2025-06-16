@@ -1,37 +1,28 @@
 #!/bin/bash
-set -e
 
 # Apply these changes to the main entrypoint.sh
 
-# 1. Fix for tarpaulin config format
-mkdir -p /app/logs/coverage
-cat > /app/tarpaulin.toml << EOF
-[features]
-fail-on-warnings = false
-
-[output_dir]
-dir = "logs/coverage"
-EOF
-echo "Created fixed tarpaulin.toml"
+# 1. Fix for X-Ray daemon - add an existence check for xray
+sed -i 's/which xray > \/dev\/null 2>&1/command -v xray > \/dev\/null 2>\&1/' /app/entrypoint.sh
 
 # 2. Fix tarpaulin command (change --config-path to --config)
-sed -i 's/cargo tarpaulin --config-path/cargo tarpaulin --config/g' /app/entrypoint.sh 2>/dev/null || true
+sed -i 's/cargo tarpaulin --config-path \/app\/tarpaulin.toml/cargo tarpaulin --config \/app\/tarpaulin.toml/g' /app/entrypoint.sh
 
 # 3. Replace build-sbf with regular build for testing
-sed -i 's/cargo build-sbf/cargo build/g' /app/entrypoint.sh 2>/dev/null || true
+sed -i 's/cargo build-sbf/cargo build/g' /app/entrypoint.sh
 
 # 4. Add cargo generate-lockfile before audit
-sed -i '/log_with_timestamp "💱 Running security audit for/a\    # Generate Cargo.lock first\n    cargo generate-lockfile || true' /app/entrypoint.sh 2>/dev/null || true
+sed -i '/log_with_timestamp "🛡️ Running security audit for/a\    # Generate Cargo.lock first\n    cargo generate-lockfile || true' /app/entrypoint.sh
 
-# 5. Fix inotifywait to handle errors gracefully
-sed -i 's/inotifywait -m -e close_write,moved_to,create "$watch_dir" |/if ! inotifywait -m -e close_write,moved_to,create "$watch_dir" 2>\/dev\/null |/g' /app/entrypoint.sh 2>/dev/null || true
+# 5. Add safe fallback for the watch setup at the end
+sed -i 's/inotifywait -m -e close_write,moved_to,create "$watch_dir" |/\
+echo "Setting up directory watch on $watch_dir..."\n\
+if ! inotifywait -m -e close_write,moved_to,create "$watch_dir" 2>\/dev\/null |/' /app/entrypoint.sh
 
-# 6. Add fallback mechanism for inotifywait
+# 6. Add fallback if inotifywait fails
 cat << 'EOFINNER' > /tmp/fallback_code
 then
     log_with_timestamp "❌ inotifywait failed, using fallback polling mechanism" "error"
-    mkdir -p /app/processed
-    
     while true; do
         echo "Polling directory $watch_dir..."
         for file in "$watch_dir"/*.rs; do
@@ -40,8 +31,9 @@ then
                 filename=$(basename "$file")
                 {
                     start_time=$(date +%s)
-                    log_with_timestamp "🌅 Processing new Rust contract: $filename"
+                    log_with_timestamp "🆕 Processing new Rust contract: $filename"
                     
+                    # Process rest of the file as before...
                     # Extract contract name
                     contract_name="${filename%.rs}"
                     
@@ -53,6 +45,7 @@ then
                     log_with_timestamp "📁 Contract copied to src/lib.rs"
                     
                     # Mark as processed
+                    mkdir -p "/app/processed"
                     touch "/app/processed/$filename"
                 } 2>&1
             fi
@@ -62,8 +55,8 @@ then
 fi
 EOFINNER
 
-# Insert the fallback code
-sed -i '/if ! inotifywait -m -e close_write,moved_to,create "$watch_dir" 2>\/dev\/null |/r /tmp/fallback_code' /app/entrypoint.sh 2>/dev/null || true
+# Insert the fallback code after the if condition
+sed -i '/if ! inotifywait -m -e close_write,moved_to,create "$watch_dir" 2>\/dev\/null |/r /tmp/fallback_code' /app/entrypoint.sh
 
 # Create processed directory to track files
 mkdir -p /app/processed
@@ -71,11 +64,7 @@ mkdir -p /app/processed
 # Create a basic Cargo.lock file to avoid audit errors
 if [ ! -f "/app/Cargo.lock" ]; then
     echo "Creating basic Cargo.lock for audit..."
-    echo "# This is a placeholder Cargo.lock file" > /app/Cargo.lock
+    touch /app/Cargo.lock
 fi
-
-# Ensure permissions on input directory
-mkdir -p /app/input
-chmod -R 777 /app/input
 
 echo "All patches applied successfully"
