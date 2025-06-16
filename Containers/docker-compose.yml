@@ -10,7 +10,6 @@ services:
     volumes:
       - shared_input:/app/input
       - shared_logs_evm:/app/logs
-      - evm_node_modules:/app/node_modules
     tty: true
     stdin_open: true
     restart: unless-stopped
@@ -20,12 +19,8 @@ services:
       - ALCHEMY_API_KEY=${ALCHEMY_API_KEY:-}
       - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}
       - REPORT_GAS=true
-      - SOLC_VERSION=0.8.18
-    healthcheck:
-      test: ["CMD", "ls", "/app/input"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    env_file:
+      - .env
     networks:
       - smarthub-network
 
@@ -40,8 +35,12 @@ services:
       - shared_logs_non_evm:/app/logs
       - ./non-evm/entrypoint.sh:/app/entrypoint.sh
       - ./non-evm/entrypoint-patch.sh:/app/entrypoint-patch.sh
-      - rust_cargo_registry:/usr/local/cargo/registry
-      - rust_cargo_target:/app/target
+    command: >
+      bash -c "
+        chmod +x /app/entrypoint-patch.sh &&
+        /app/entrypoint-patch.sh &&
+        /app/entrypoint-wrapper.sh
+      "
     tty: true
     stdin_open: true
     restart: unless-stopped
@@ -49,27 +48,23 @@ services:
       - RUST_LOG=debug
       - SOLANA_URL=https://api.devnet.solana.com
       - AWS_XRAY_SDK_ENABLED=false
-      - CARGO_HOME=/usr/local/cargo
-    healthcheck:
-      test: ["CMD", "ls", "/app/input"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    env_file:
+      - .env
     networks:
       - smarthub-network
 
   # File input service that makes the shared directory accessible to your backend
   file-input:
-    image: alpine:latest
+    image: busybox
     container_name: file-input-service
     volumes:
       - shared_input:/data/input
     command: >
       sh -c "
+        chmod -R 777 /data/input &&
         mkdir -p /data/input &&
         chmod -R 777 /data/input &&
         echo 'Input directory ready at /data/input' &&
-        # Keep container running
         tail -f /dev/null
       "
     restart: unless-stopped
@@ -78,7 +73,7 @@ services:
 
   # Permissions handler service - runs once to set up permissions
   permissions:
-    image: alpine:latest
+    image: busybox
     volumes:
       - shared_input:/data/input
       - shared_logs_evm:/data/logs/evm
@@ -100,9 +95,6 @@ volumes:
   shared_input:  # Docker-managed volume for input files
   shared_logs_evm:  # Docker-managed volume for EVM logs
   shared_logs_non_evm:  # Docker-managed volume for non-EVM logs
-  evm_node_modules:  # Persistent volume for npm packages
-  rust_cargo_registry:  # Persistent volume for Rust packages
-  rust_cargo_target:  # Persistent volume for Rust build artifacts
 
 networks:
   smarthub-network:
