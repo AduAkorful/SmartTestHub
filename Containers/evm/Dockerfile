@@ -28,10 +28,12 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
 # Create a Python virtual environment and install Slither
 RUN python3 -m venv /opt/venv && \
     . /opt/venv/bin/activate && \
-    pip install slither-analyzer && \
+    pip install slither-analyzer solc-select && \
+    solc-select install 0.8.18 && \
+    solc-select use 0.8.18 && \
     echo 'source /opt/venv/bin/activate' >> /root/.bashrc
 
-# Add virtual environment to PATH
+# Add virtual environment to PATH 
 ENV PATH="/opt/venv/bin:${PATH}"
 
 # Set working directory
@@ -46,13 +48,12 @@ RUN apt-get update && apt-get install -y \
 COPY package.json package-lock.json* ./
 RUN npm install --no-optional || npm install --no-optional --force
 
-# Add these lines to your Dockerfile
-RUN npm install --save-dev hardhat-contract-sizer hardhat-gas-reporter@1.0.9 solidity-coverage@0.8.4 && \
-    apt-get update && apt-get install -y python3-pip && \
-    pip3 install solc-select && solc-select install 0.8.18 && solc-select use 0.8.18
+# Install required hardhat plugins up front
+RUN npm install --save-dev hardhat-contract-sizer hardhat-gas-reporter@1.0.9 solidity-coverage@0.8.4
 
-# Add this to patch your Hardhat config
-RUN sed -i 's/require("@nomicfoundation\/hardhat-toolbox")/require("@nomicfoundation\/hardhat-toolbox")\nrequire("hardhat-contract-sizer")\nrequire("hardhat-gas-reporter")/' hardhat.config.js
+# Create a symlink for solc
+RUN ln -sf /opt/venv/bin/solc /usr/local/bin/solc
+
 # Install additional security and analysis tools
 RUN npm install -g @openzeppelin/hardhat-upgrades \
     hardhat-contract-sizer hardhat-docgen hardhat-storage-layout \
@@ -62,8 +63,17 @@ RUN npm install -g @openzeppelin/hardhat-upgrades \
 # Copy all application files
 COPY . .
 
-# Fix script permissions and line endings and create a startup script
+# Fix hardhat.config.js to recognize plugins
+RUN sed -i 's/require("@nomicfoundation\/hardhat-toolbox")/require("@nomicfoundation\/hardhat-toolbox")\nrequire("hardhat-contract-sizer")\nrequire("hardhat-gas-reporter")/' hardhat.config.js
+
+# Fix script permissions and line endings
 RUN dos2unix ./entrypoint.sh && chmod +x ./entrypoint.sh
+
+# Fix coverage command to remove network flag
+RUN sed -i 's/--network [a-zA-Z0-9]\+//g' /app/scripts/run-coverage.sh
+
+# Fix gas reporter parameters
+RUN sed -i 's/--reporter [a-zA-Z0-9]\+//g' /app/scripts/run-gas-report.sh 2>/dev/null || true
 
 # Create a startup wrapper script that will handle permissions at runtime
 RUN echo '#!/bin/bash\n\
@@ -89,6 +99,7 @@ RUN chmod -R 755 /app/logs /app/input /app/contracts /app/test
 # Add environment variable loading
 ENV NODE_ENV=development
 ENV REPORT_GAS=true
+ENV SOLC_VERSION=0.8.18
 
 # Use the wrapper script as entrypoint
 ENTRYPOINT ["/docker-entrypoint.sh"]
