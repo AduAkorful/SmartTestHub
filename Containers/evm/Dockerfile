@@ -46,6 +46,13 @@ RUN apt-get update && apt-get install -y \
 COPY package.json package-lock.json* ./
 RUN npm install --no-optional || npm install --no-optional --force
 
+# Add these lines to your Dockerfile
+RUN npm install --save-dev hardhat-contract-sizer hardhat-gas-reporter@1.0.9 solidity-coverage@0.8.4 && \
+    apt-get update && apt-get install -y python3-pip && \
+    pip3 install solc-select && solc-select install 0.8.18 && solc-select use 0.8.18
+
+# Add this to patch your Hardhat config
+RUN sed -i 's/require("@nomicfoundation\/hardhat-toolbox")/require("@nomicfoundation\/hardhat-toolbox")\nrequire("hardhat-contract-sizer")\nrequire("hardhat-gas-reporter")/' hardhat.config.js
 # Install additional security and analysis tools
 RUN npm install -g @openzeppelin/hardhat-upgrades \
     hardhat-contract-sizer hardhat-docgen hardhat-storage-layout \
