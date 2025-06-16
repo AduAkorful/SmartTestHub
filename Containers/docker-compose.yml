@@ -10,6 +10,7 @@ services:
     volumes:
       - shared_input:/app/input
       - shared_logs_evm:/app/logs
+      - evm_node_modules:/app/node_modules
     tty: true
     stdin_open: true
     restart: unless-stopped
@@ -19,10 +20,31 @@ services:
       - ALCHEMY_API_KEY=${ALCHEMY_API_KEY:-}
       - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}
       - REPORT_GAS=true
+      # Fix for Slither
+      - SOLC_VERSION=0.8.18
+      - PATH=/usr/local/bin:/usr/bin:/bin:/app/node_modules/.bin
     env_file:
       - .env
     networks:
       - smarthub-network
+    # Install missing dependencies
+    command: >
+      bash -c "
+        # Install missing Hardhat plugins
+        npm install --save-dev hardhat-contract-sizer hardhat-gas-reporter solidity-coverage @nomicfoundation/hardhat-toolbox &&
+        # Install solc for Slither
+        apt-get update && apt-get install -y python3-pip &&
+        pip3 install solc-select && solc-select install 0.8.18 && solc-select use 0.8.18 &&
+        # Watch for files
+        echo '✅ EVM container ready with all dependencies installed' &&
+        node /app/index.js
+      "
+    healthcheck:
+      test: ["CMD", "ls", "/app/node_modules/hardhat-contract-sizer"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   non-evm:
     build:
@@ -35,10 +57,30 @@ services:
       - shared_logs_non_evm:/app/logs
       - ./non-evm/entrypoint.sh:/app/entrypoint.sh
       - ./non-evm/entrypoint-patch.sh:/app/entrypoint-patch.sh
+      - rust_cargo_registry:/usr/local/cargo/registry
     command: >
       bash -c "
+        # Fix entrypoint permissions
         chmod +x /app/entrypoint-patch.sh &&
         /app/entrypoint-patch.sh &&
+        
+        # Install missing Solana tools
+        apt-get update && apt-get install -y curl &&
+        curl -sSfL https://release.solana.com/v1.17.3/install | sh &&
+        export PATH=\$PATH:/root/.local/share/solana/install/active_release/bin &&
+        
+        # Fix tarpaulin config
+        echo '[target.\"*\"]
+        runner = \"\"
+        
+        [features]
+        fail-on-warnings = false
+        
+        [output_dir]
+        dir = \"logs/coverage\"
+        ' > /app/tarpaulin.toml &&
+        
+        # Start the service
         /app/entrypoint-wrapper.sh
       "
     tty: true
@@ -48,6 +90,7 @@ services:
       - RUST_LOG=debug
       - SOLANA_URL=https://api.devnet.solana.com
       - AWS_XRAY_SDK_ENABLED=false
+      - CARGO_HOME=/usr/local/cargo
     env_file:
       - .env
     networks:
@@ -55,16 +98,16 @@ services:
 
   # File input service that makes the shared directory accessible to your backend
   file-input:
-    image: busybox
+    image: alpine:latest
     container_name: file-input-service
     volumes:
       - shared_input:/data/input
     command: >
       sh -c "
-        chmod -R 777 /data/input &&
         mkdir -p /data/input &&
         chmod -R 777 /data/input &&
         echo 'Input directory ready at /data/input' &&
+        # Keep container running
         tail -f /dev/null
       "
     restart: unless-stopped
@@ -73,7 +116,7 @@ services:
 
   # Permissions handler service - runs once to set up permissions
   permissions:
-    image: busybox
+    image: alpine:latest
     volumes:
       - shared_input:/data/input
       - shared_logs_evm:/data/logs/evm
@@ -95,6 +138,8 @@ volumes:
   shared_input:  # Docker-managed volume for input files
   shared_logs_evm:  # Docker-managed volume for EVM logs
   shared_logs_non_evm:  # Docker-managed volume for non-EVM logs
+  evm_node_modules:  # Persistent volume for npm packages
+  rust_cargo_registry:  # Persistent volume for Rust packages
 
 networks:
   smarthub-network:
