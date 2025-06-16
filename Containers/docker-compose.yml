@@ -21,24 +21,11 @@ services:
       - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}
       - REPORT_GAS=true
       - SOLC_VERSION=0.8.18
-    entrypoint: >
-      sh -c "
-        # Install missing dependencies
-        npm install --save-dev hardhat-contract-sizer hardhat-gas-reporter@1.0.9 solidity-coverage@0.8.4 &&
-        
-        # Patch hardhat config to recognize new plugins
-        sed -i 's/require(\"@nomicfoundation\/hardhat-toolbox\")/require(\"@nomicfoundation\/hardhat-toolbox\")\nrequire(\"hardhat-contract-sizer\")\nrequire(\"hardhat-gas-reporter\")/' hardhat.config.js &&
-        
-        # Patch coverage command to remove network flag
-        sed -i 's/--network [a-zA-Z0-9]\\+//g' /app/scripts/run-coverage.sh &&
-        
-        # Fix slither by installing solc
-        npm install -g solc@0.8.18 && 
-        ln -sf /app/node_modules/.bin/solcjs /usr/local/bin/solc &&
-        
-        # Start the normal entrypoint
-        node /app/index.js
-      "
+    healthcheck:
+      test: ["CMD", "ls", "/app/input"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - smarthub-network
 
@@ -54,29 +41,7 @@ services:
       - ./non-evm/entrypoint.sh:/app/entrypoint.sh
       - ./non-evm/entrypoint-patch.sh:/app/entrypoint-patch.sh
       - rust_cargo_registry:/usr/local/cargo/registry
-    entrypoint: >
-      sh -c "
-        # Fix entrypoint permissions
-        chmod +x /app/entrypoint-patch.sh &&
-        /app/entrypoint-patch.sh &&
-        
-        # Create proper tarpaulin config
-        echo '[features]
-        fail-on-warnings = false
-
-        [output_dir]
-        dir = \"logs/coverage\"
-        ' > /app/tarpaulin.toml &&
-        
-        # Patch the tarpaulin command to use --config instead of --config-path
-        sed -i 's/--config-path tarpaulin.toml/--config tarpaulin.toml/g' /app/scripts/*.sh &&
-        
-        # Handle missing build-sbf command
-        sed -i 's/cargo build-sbf/echo \"Skipping build-sbf command\"/g' /app/scripts/*.sh &&
-        
-        # Start the service
-        /app/entrypoint-wrapper.sh
-      "
+      - rust_cargo_target:/app/target
     tty: true
     stdin_open: true
     restart: unless-stopped
@@ -85,8 +50,11 @@ services:
       - SOLANA_URL=https://api.devnet.solana.com
       - AWS_XRAY_SDK_ENABLED=false
       - CARGO_HOME=/usr/local/cargo
-    env_file:
-      - .env
+    healthcheck:
+      test: ["CMD", "ls", "/app/input"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - smarthub-network
 
@@ -134,6 +102,7 @@ volumes:
   shared_logs_non_evm:  # Docker-managed volume for non-EVM logs
   evm_node_modules:  # Persistent volume for npm packages
   rust_cargo_registry:  # Persistent volume for Rust packages
+  rust_cargo_target:  # Persistent volume for Rust build artifacts
 
 networks:
   smarthub-network:
