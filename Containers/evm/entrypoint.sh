@@ -38,7 +38,6 @@ ensure_hardhat_config() {
 require("@nomicfoundation/hardhat-toolbox");
 require("solidity-coverage");
 require("hardhat-gas-reporter");
-require("hardhat-contract-sizer");
 require("hardhat-docgen");
 require("hardhat-storage-layout");
 require("@openzeppelin/hardhat-upgrades");
@@ -85,12 +84,6 @@ module.exports = {
     outputFile: "./logs/gas/gas-report.txt",
     noColors: true,
   },
-  contractSizer: {
-    alphaSort: true,
-    runOnCompile: true,
-    disambiguatePaths: false,
-    outputFile: "./logs/reports/contract-sizes.txt",
-  },
   docgen: {
     path: './logs/docs',
     clear: true,
@@ -133,12 +126,6 @@ EOF
     # Check for missing npm packages and install them
     log_with_timestamp "🔍 Checking for required npm packages..."
     cd /app
-    
-    # Check for hardhat-contract-sizer package
-    if ! npm list hardhat-contract-sizer 2>/dev/null | grep -q "hardhat-contract-sizer"; then
-        log_with_timestamp "📦 Installing hardhat-contract-sizer..."
-        npm install --save-dev hardhat-contract-sizer
-    fi
     
     # Check for hardhat-gas-reporter package
     if ! npm list hardhat-gas-reporter 2>/dev/null | grep -q "hardhat-gas-reporter"; then
@@ -313,35 +300,109 @@ EOF
 
       # Contract size analysis
       log_with_timestamp "📏 Analyzing contract size..."
-      if npx hardhat run --network hardhat ./scripts/check-contract-size.js 2>&1 | tee ./logs/reports/contract-sizes.txt; then
-        log_with_timestamp "✅ Contract size analysis completed"
-      else
-        # Try direct method if script fails
-        log_with_timestamp "⚠️ Contract size script failed, trying direct method..."
-        # Create a temporary script
-        cat > ./scripts/check-contract-size.js <<EOF
+      
+      # Create a temporary script directory and file
+      mkdir -p ./scripts
+      cat > ./scripts/check-contract-size.js <<EOF
+const fs = require('fs');
+const path = require('path');
+
 async function main() {
-  const contractName = "${contract_name}";
+  console.log("Contract Size Analysis for ${contract_name}");
+  console.log("======================================");
+  
   try {
+    // Try to read the specific contract artifact first
+    const contractName = "${contract_name}";
     const artifact = await hre.artifacts.readArtifact(contractName);
-    const size = (artifact.deployedBytecode.length - 2) / 2;
-    console.log(\`Contract: \${contractName}\`);
-    console.log(\`Size: \${size} bytes\`);
-    console.log(\`Size limit: 24576 bytes\`);
-    console.log(\`Status: \${size <= 24576 ? 'Within limit ✅' : 'Exceeds limit ❌'}\`);
+    
+    if (artifact && artifact.deployedBytecode) {
+      const size = (artifact.deployedBytecode.length - 2) / 2;
+      console.log(\`Contract: \${contractName}\`);
+      console.log(\`Size: \${size} bytes\`);
+      console.log(\`Size limit: 24576 bytes\`);
+      console.log(\`Status: \${size <= 24576 ? 'Within limit ✅' : 'Exceeds limit ❌'}\`);
+    } else {
+      console.log(\`Could not find bytecode for \${contractName}\`);
+      
+      // If specific contract not found, try to list all contracts
+      const artifactsDir = path.join(process.cwd(), 'artifacts', 'contracts');
+      if (fs.existsSync(artifactsDir)) {
+        console.log("\nAll compiled contracts:");
+        
+        // Find all JSON files in the artifacts directory
+        const contracts = [];
+        const readDir = (dir) => {
+          const files = fs.readdirSync(dir);
+          files.forEach(file => {
+            const fullPath = path.join(dir, file);
+            if (fs.statSync(fullPath).isDirectory()) {
+              readDir(fullPath);
+            } else if (file.endsWith('.json') && !file.endsWith('.dbg.json')) {
+              try {
+                const content = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+                if (content.deployedBytecode && content.deployedBytecode !== '0x') {
+                  const size = (content.deployedBytecode.length - 2) / 2;
+                  const name = file.replace('.json', '');
+                  contracts.push({ name, size });
+                }
+              } catch (e) {
+                console.error(\`Error reading \${file}: \${e.message}\`);
+              }
+            }
+          });
+        };
+        
+        readDir(artifactsDir);
+        
+        // Sort by size
+        contracts.sort((a, b) => b.size - a.size);
+        
+        // Display results
+        console.log("| Contract | Size (bytes) | Status |");
+        console.log("|----------|--------------|--------|");
+        contracts.forEach(contract => {
+          const status = contract.size <= 24576 ? "Within limit ✅" : "Exceeds limit ❌";
+          console.log(\`| \${contract.name} | \${contract.size} | \${status} |\`);
+        });
+      }
+    }
   } catch (e) {
     console.error("Error checking contract size:", e.message);
+    
+    // Try to list contract files directly if Hardhat artifact reading fails
+    console.log("\nAttempting to list contract files:");
+    try {
+      const contractsDir = path.join(process.cwd(), 'contracts');
+      if (fs.existsSync(contractsDir)) {
+        const files = fs.readdirSync(contractsDir).filter(file => file.endsWith('.sol'));
+        console.log("| Contract File | Size (bytes) |");
+        console.log("|---------------|--------------|");
+        files.forEach(file => {
+          const stats = fs.statSync(path.join(contractsDir, file));
+          console.log(\`| \${file} | \${stats.size} |\`);
+        });
+      }
+    } catch (dirError) {
+      console.error("Could not list contract files:", dirError.message);
+    }
   }
 }
-main().catch(console.error);
+
+// Run the script
+main()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
 EOF
-        mkdir -p ./scripts
-        
-        if npx hardhat run --network hardhat ./scripts/check-contract-size.js 2>&1 | tee ./logs/reports/contract-sizes.txt; then
-          log_with_timestamp "✅ Contract size analysis completed"
-        else
-          log_with_timestamp "❌ Contract size analysis failed"
-        fi
+      
+      # Run the dynamically created script
+      if npx hardhat run scripts/check-contract-size.js --network hardhat 2>&1 | tee ./logs/reports/contract-sizes.txt; then
+        log_with_timestamp "✅ Contract size analysis completed"
+      else
+        log_with_timestamp "❌ Contract size analysis failed"
       fi
 
       # Generate storage layout
