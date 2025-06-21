@@ -132,9 +132,9 @@ fi
 # Ensure configuration files exist
 ensure_hardhat_config
 
-# Install missing Hardhat plugins
+# Install missing Hardhat plugins with legacy-peer-deps flag to resolve conflicts
 log_with_timestamp "📦 Installing/updating required Hardhat plugins..."
-npm install --no-save hardhat-contract-sizer hardhat-gas-reporter solidity-coverage || true
+npm install --no-save --legacy-peer-deps hardhat-contract-sizer hardhat-gas-reporter solidity-coverage || true
 
 # Watch the input folder where backend will drop .sol files
 log_with_timestamp "📡 Watching /app/input for incoming Solidity files..."
@@ -269,7 +269,7 @@ EOF
         log_with_timestamp "⚠️ Coverage analysis failed"
       fi
 
-      # Contract size analysis - FIX: Use contract-sizer task
+      # Contract size analysis - Use compatible command with our hardhat version
       log_with_timestamp "📏 Analyzing contract size..."
       if npx hardhat compile --config ./config/hardhat.config.js 2>&1 | tee ./logs/reports/contract-sizes.txt; then
         log_with_timestamp "✅ Contract size analysis completed"
