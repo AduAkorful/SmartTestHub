@@ -60,6 +60,9 @@ module.exports = {
         version: "0.8.20",
       },
       {
+        version: "0.8.18",
+      },
+      {
         version: "0.8.17",
       },
       {
@@ -115,11 +118,49 @@ EOF
   "exclude_medium": false,
   "exclude_high": false,
   "solc_disable_warnings": false,
-  "json": "/app/logs/slither/slither-report.json"
+  "json": "/app/logs/slither/slither-report.json",
+  "solc_remaps": [
+    "@openzeppelin/=node_modules/@openzeppelin/",
+    "@chainlink/=node_modules/@chainlink/"
+  ],
+  "filter_paths": "node_modules",
+  "solc": "hardhat"
 }
 EOF
         log_with_timestamp "✅ Created Slither configuration"
     fi
+
+    # Check for missing npm packages and install them
+    log_with_timestamp "🔍 Checking for required npm packages..."
+    cd /app
+    
+    # Check for hardhat-contract-sizer package
+    if ! npm list hardhat-contract-sizer 2>/dev/null | grep -q "hardhat-contract-sizer"; then
+        log_with_timestamp "📦 Installing hardhat-contract-sizer..."
+        npm install --save-dev hardhat-contract-sizer
+    fi
+    
+    # Check for hardhat-gas-reporter package
+    if ! npm list hardhat-gas-reporter 2>/dev/null | grep -q "hardhat-gas-reporter"; then
+        log_with_timestamp "📦 Installing hardhat-gas-reporter..."
+        npm install --save-dev hardhat-gas-reporter
+    fi
+    
+    # Check for solidity-coverage package
+    if ! npm list solidity-coverage 2>/dev/null | grep -q "solidity-coverage"; then
+        log_with_timestamp "📦 Installing solidity-coverage..."
+        npm install --save-dev solidity-coverage
+    fi
+    
+    # Install solc locally for Slither
+    if ! command -v solc-select &> /dev/null; then
+        log_with_timestamp "📦 Installing solc-select for Slither..."
+        pip install solc-select
+        solc-select install 0.8.18
+        solc-select use 0.8.18
+    fi
+
+    log_with_timestamp "✅ Package checks completed"
 }
 
 # Initialize git if not already done (required for some tools)
@@ -135,10 +176,29 @@ ensure_hardhat_config
 # Watch the input folder where backend will drop .sol files
 log_with_timestamp "📡 Watching /app/input for incoming Solidity files..."
 
+# Use a marker file to prevent duplicate processing
+MARKER_DIR="/app/.processed"
+mkdir -p "$MARKER_DIR"
+
 inotifywait -m -e close_write,moved_to,create /app/input |
 while read -r directory events filename; do
   if [[ "$filename" == *.sol ]]; then
+    # Check if file was already processed (prevent duplicates)
+    MARKER_FILE="$MARKER_DIR/$filename.processed"
+    if [ -f "$MARKER_FILE" ]; then
+        LAST_PROCESSED=$(cat "$MARKER_FILE")
+        CURRENT_TIME=$(date +%s)
+        # Only process if last processed more than 5 seconds ago
+        if (( $CURRENT_TIME - $LAST_PROCESSED < 5 )); then
+            log_with_timestamp "⏭️ Skipping duplicate processing of $filename (processed ${LAST_PROCESSED}s ago)"
+            continue
+        fi
+    fi
+    
     {
+      # Mark file as processed with timestamp
+      date +%s > "$MARKER_FILE"
+      
       log_with_timestamp "🆕 Detected Solidity contract: $filename"
 
       # Move file to /app/contracts (overwrite if same name exists)
@@ -189,7 +249,7 @@ EOF
 
       # Run Hardhat tests
       log_with_timestamp "🧪 Running Hardhat tests..."
-      if npx hardhat test --config ./config/hardhat.config.js 2>&1 | tee -a "$LOG_FILE"; then
+      if HARDHAT_NETWORK=hardhat npx hardhat test --config ./config/hardhat.config.js 2>&1 | tee -a "$LOG_FILE"; then
         log_with_timestamp "✅ Hardhat tests passed"
       else
         log_with_timestamp "❌ Hardhat tests failed for $filename"
@@ -218,13 +278,14 @@ EOF
       # Run comprehensive Slither security analysis
       log_with_timestamp "🔎 Running comprehensive Slither security analysis..."
       if [ -f "./config/slither.config.json" ]; then
-        if slither ./contracts --config-file ./config/slither.config.json --json ./logs/slither/slither-report.json 2>&1 | tee -a "$LOG_FILE"; then
+        # Use --solc to directly specify the solc version
+        if slither ./contracts --solc solc --config-file ./config/slither.config.json 2>&1 | tee -a "$LOG_FILE"; then
           log_with_timestamp "✅ Slither analysis completed - check logs/slither/slither-report.json"
         else
           log_with_timestamp "⚠️ Slither analysis completed with findings - check logs/slither/slither-report.json"
         fi
       else
-        if slither ./contracts --json ./logs/slither/slither-report.json 2>&1 | tee -a "$LOG_FILE"; then
+        if slither ./contracts --solc solc 2>&1 | tee -a "$LOG_FILE"; then
           log_with_timestamp "✅ Slither analysis completed"
         else
           log_with_timestamp "⚠️ Slither analysis completed with findings"
@@ -233,7 +294,7 @@ EOF
 
       # Generate comprehensive gas report
       log_with_timestamp "⛽ Generating comprehensive gas usage report..."
-      if npx hardhat test --config ./config/hardhat.config.js --reporter hardhat-gas-reporter 2>&1 | tee ./logs/gas/gas-report.txt; then
+      if HARDHAT_NETWORK=hardhat npx hardhat test --config ./config/hardhat.config.js 2>&1 | tee ./logs/gas/gas-report.txt; then
         log_with_timestamp "✅ Gas report generated - check logs/gas/gas-report.txt"
       else
         log_with_timestamp "⚠️ Gas report generation failed"
@@ -241,7 +302,7 @@ EOF
 
       # Run coverage analysis
       log_with_timestamp "📊 Running coverage analysis..."
-      if npx hardhat coverage --config ./config/hardhat.config.js 2>&1 | tee -a "$LOG_FILE"; then
+      if HARDHAT_NETWORK=hardhat npx hardhat coverage --config ./config/hardhat.config.js 2>&1 | tee -a "$LOG_FILE"; then
         log_with_timestamp "✅ Coverage analysis completed"
         # Move coverage files to organized directory
         [ -f "coverage.json" ] && mv coverage.json ./logs/coverage/ 2>/dev/null || true
@@ -252,15 +313,40 @@ EOF
 
       # Contract size analysis
       log_with_timestamp "📏 Analyzing contract size..."
-      if npx hardhat size-contracts --config ./config/hardhat.config.js 2>&1 | tee ./logs/reports/contract-sizes.txt; then
+      if npx hardhat run --network hardhat ./scripts/check-contract-size.js 2>&1 | tee ./logs/reports/contract-sizes.txt; then
         log_with_timestamp "✅ Contract size analysis completed"
       else
-        log_with_timestamp "⚠️ Contract size analysis failed"
+        # Try direct method if script fails
+        log_with_timestamp "⚠️ Contract size script failed, trying direct method..."
+        # Create a temporary script
+        cat > ./scripts/check-contract-size.js <<EOF
+async function main() {
+  const contractName = "${contract_name}";
+  try {
+    const artifact = await hre.artifacts.readArtifact(contractName);
+    const size = (artifact.deployedBytecode.length - 2) / 2;
+    console.log(\`Contract: \${contractName}\`);
+    console.log(\`Size: \${size} bytes\`);
+    console.log(\`Size limit: 24576 bytes\`);
+    console.log(\`Status: \${size <= 24576 ? 'Within limit ✅' : 'Exceeds limit ❌'}\`);
+  } catch (e) {
+    console.error("Error checking contract size:", e.message);
+  }
+}
+main().catch(console.error);
+EOF
+        mkdir -p ./scripts
+        
+        if npx hardhat run --network hardhat ./scripts/check-contract-size.js 2>&1 | tee ./logs/reports/contract-sizes.txt; then
+          log_with_timestamp "✅ Contract size analysis completed"
+        else
+          log_with_timestamp "❌ Contract size analysis failed"
+        fi
       fi
 
       # Generate storage layout
       log_with_timestamp "🗂️ Generating storage layout..."
-      if npx hardhat check --config ./config/hardhat.config.js 2>&1 | tee ./logs/reports/storage-layout.txt; then
+      if HARDHAT_NETWORK=hardhat npx hardhat check --config ./config/hardhat.config.js 2>&1 | tee ./logs/reports/storage-layout.txt; then
         log_with_timestamp "✅ Storage layout generated"
       else
         log_with_timestamp "⚠️ Storage layout generation failed"
@@ -283,6 +369,7 @@ EOF
 - **Security Analysis**: $(grep -q "✅ Slither analysis completed" "$LOG_FILE" && echo "✅ COMPLETED" || echo "⚠️ ISSUES FOUND")
 - **Gas Analysis**: $(grep -q "✅ Gas report generated" "$LOG_FILE" && echo "✅ COMPLETED" || echo "⚠️ FAILED")
 - **Coverage Analysis**: $(grep -q "✅ Coverage analysis completed" "$LOG_FILE" && echo "✅ COMPLETED" || echo "⚠️ FAILED")
+- **Contract Size**: $(grep -q "Within limit ✅" "./logs/reports/contract-sizes.txt" 2>/dev/null && echo "✅ WITHIN LIMIT" || echo "⚠️ CHECK REQUIRED")
 
 ## Files Generated
 - Security Report: \`logs/slither/slither-report.json\`
