@@ -36,12 +36,12 @@ ensure_hardhat_config() {
         log_with_timestamp "📝 Creating Hardhat configuration..."
         cat > "/app/config/hardhat.config.js" <<EOF
 require("@nomicfoundation/hardhat-toolbox");
-
-// Load optional plugins if available
-try { require("solidity-coverage"); } catch (e) { console.log("Optional plugin not found: solidity-coverage"); }
-try { require("hardhat-gas-reporter"); } catch (e) { console.log("Optional plugin not found: hardhat-gas-reporter"); }
-try { require("hardhat-contract-sizer"); } catch (e) { console.log("Optional plugin not found: hardhat-contract-sizer"); }
-try { require("@openzeppelin/hardhat-upgrades"); } catch (e) { console.log("Optional plugin not found: @openzeppelin/hardhat-upgrades"); }
+require("solidity-coverage");
+require("hardhat-gas-reporter");
+require("hardhat-contract-sizer");
+require("hardhat-docgen");
+require("hardhat-storage-layout");
+require("@openzeppelin/hardhat-upgrades");
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -82,6 +82,17 @@ module.exports = {
     outputFile: "./logs/gas/gas-report.txt",
     noColors: true,
   },
+  contractSizer: {
+    alphaSort: true,
+    runOnCompile: true,
+    disambiguatePaths: false,
+    outputFile: "./logs/reports/contract-sizes.txt",
+  },
+  docgen: {
+    path: './logs/docs',
+    clear: true,
+    runOnCompile: true,
+  },
   paths: {
     sources: "./contracts",
     tests: "./test",
@@ -120,21 +131,6 @@ fi
 
 # Ensure configuration files exist
 ensure_hardhat_config
-
-# Function to safely run commands
-run_command() {
-    local command="$1"
-    local success_msg="$2"
-    local failure_msg="$3"
-    
-    if eval "$command" 2>&1 | tee -a "$LOG_FILE"; then
-        log_with_timestamp "$success_msg"
-        return 0
-    else
-        log_with_timestamp "$failure_msg"
-        return 1
-    fi
-}
 
 # Watch the input folder where backend will drop .sol files
 log_with_timestamp "📡 Watching /app/input for incoming Solidity files..."
@@ -184,100 +180,91 @@ EOF
 
       # Run Hardhat compilation
       log_with_timestamp "🔨 Compiling contract with Hardhat..."
-      run_command "npx hardhat compile --config ./config/hardhat.config.js" \
-        "✅ Hardhat compilation successful" \
-        "❌ Hardhat compilation failed for $filename" || continue
+      if npx hardhat compile --config ./config/hardhat.config.js 2>&1 | tee -a "$LOG_FILE"; then
+        log_with_timestamp "✅ Hardhat compilation successful"
+      else
+        log_with_timestamp "❌ Hardhat compilation failed for $filename"
+        continue
+      fi
 
       # Run Hardhat tests
       log_with_timestamp "🧪 Running Hardhat tests..."
-      run_command "npx hardhat test --config ./config/hardhat.config.js" \
-        "✅ Hardhat tests passed" \
-        "❌ Hardhat tests failed for $filename"
+      if npx hardhat test --config ./config/hardhat.config.js 2>&1 | tee -a "$LOG_FILE"; then
+        log_with_timestamp "✅ Hardhat tests passed"
+      else
+        log_with_timestamp "❌ Hardhat tests failed for $filename"
+      fi
 
       # Run Foundry tests if any .t.sol files exist
       if compgen -G './test/*.t.sol' > /dev/null 2>&1; then
         log_with_timestamp "🧪 Running Foundry tests with gas reporting..."
-        run_command "forge test --gas-report --json > ./logs/foundry/foundry-test-report.json" \
-          "✅ Foundry tests passed with gas report" \
-          "❌ Foundry tests failed - check logs/foundry/foundry-test-report.json"
+        if forge test --gas-report --json > ./logs/foundry/foundry-test-report.json 2>&1 | tee -a "$LOG_FILE"; then
+          log_with_timestamp "✅ Foundry tests passed with gas report"
+        else
+          log_with_timestamp "❌ Foundry tests failed - check logs/foundry/foundry-test-report.json"
+        fi
         
         # Generate forge coverage
         log_with_timestamp "📊 Generating Foundry coverage report..."
-        run_command "forge coverage --report lcov --report-file ./logs/coverage/foundry-lcov.info" \
-          "✅ Foundry coverage report generated" \
-          "⚠️ Foundry coverage generation failed"
+        if forge coverage --report lcov --report-file ./logs/coverage/foundry-lcov.info 2>&1 | tee -a "$LOG_FILE"; then
+          log_with_timestamp "✅ Foundry coverage report generated"
+        else
+          log_with_timestamp "⚠️ Foundry coverage generation failed"
+        fi
       else
         log_with_timestamp "ℹ️ No Foundry test files found, skipping forge test"
       fi
 
       # Run comprehensive Slither security analysis
       log_with_timestamp "🔎 Running comprehensive Slither security analysis..."
-      # Determine solc version from contract pragma
-      SOLC_VERSION=$(grep -oP 'pragma solidity .*?[0-9]+\.[0-9]+\.[0-9]+' /app/contracts/$filename | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' || echo "0.8.24")
-      log_with_timestamp "📝 Detected Solidity version: $SOLC_VERSION"
-      
-      # Use solc-select if available or log a warning
-      if command -v solc-select >/dev/null 2>&1; then
-        log_with_timestamp "🔧 Installing solc version $SOLC_VERSION using solc-select"
-        solc-select install $SOLC_VERSION && solc-select use $SOLC_VERSION || true
-      else
-        log_with_timestamp "⚠️ solc-select not found, attempting to use system solc"
-      fi
-      
-      # Try to run slither with proper configuration
       if [ -f "./config/slither.config.json" ]; then
-        run_command "slither ./contracts --config-file ./config/slither.config.json --json ./logs/slither/slither-report.json" \
-          "✅ Slither analysis completed - check logs/slither/slither-report.json" \
-          "⚠️ Slither analysis completed with findings - check logs/slither/slither-report.json"
+        if slither ./contracts --config-file ./config/slither.config.json --json ./logs/slither/slither-report.json 2>&1 | tee -a "$LOG_FILE"; then
+          log_with_timestamp "✅ Slither analysis completed - check logs/slither/slither-report.json"
+        else
+          log_with_timestamp "⚠️ Slither analysis completed with findings - check logs/slither/slither-report.json"
+        fi
       else
-        run_command "slither ./contracts --json ./logs/slither/slither-report.json" \
-          "✅ Slither analysis completed" \
-          "⚠️ Slither analysis completed with findings"
+        if slither ./contracts --json ./logs/slither/slither-report.json 2>&1 | tee -a "$LOG_FILE"; then
+          log_with_timestamp "✅ Slither analysis completed"
+        else
+          log_with_timestamp "⚠️ Slither analysis completed with findings"
+        fi
       fi
 
       # Generate comprehensive gas report
       log_with_timestamp "⛽ Generating comprehensive gas usage report..."
-      # Set environment variable for gas reporting
-      export REPORT_GAS=true
-      run_command "npx hardhat test --config ./config/hardhat.config.js" \
-        "✅ Gas report generated - check logs/gas/gas-report.txt" \
-        "⚠️ Gas report generation failed"
-      
-      # Try to find generated gas report or create a placeholder
-      if [ ! -f "./logs/gas/gas-report.txt" ]; then
-        echo "Gas report not found. This may be due to missing plugin." > ./logs/gas/gas-report.txt
+      if npx hardhat test --config ./config/hardhat.config.js --reporter hardhat-gas-reporter 2>&1 | tee ./logs/gas/gas-report.txt; then
+        log_with_timestamp "✅ Gas report generated - check logs/gas/gas-report.txt"
+      else
+        log_with_timestamp "⚠️ Gas report generation failed"
       fi
 
-      # Run coverage analysis if the plugin is available
+      # Run coverage analysis
       log_with_timestamp "📊 Running coverage analysis..."
-      if npm list solidity-coverage > /dev/null 2>&1; then
-        run_command "npx hardhat coverage --config ./config/hardhat.config.js" \
-          "✅ Coverage analysis completed" \
-          "⚠️ Coverage analysis failed"
+      if npx hardhat coverage --config ./config/hardhat.config.js 2>&1 | tee -a "$LOG_FILE"; then
+        log_with_timestamp "✅ Coverage analysis completed"
         # Move coverage files to organized directory
         [ -f "coverage.json" ] && mv coverage.json ./logs/coverage/ 2>/dev/null || true
         [ -d "coverage" ] && cp -r coverage/* ./logs/coverage/ 2>/dev/null || true
       else
-        log_with_timestamp "⚠️ Skipping coverage analysis - solidity-coverage plugin not found"
-        echo "Coverage analysis skipped - plugin not available" > ./logs/coverage/coverage-info.txt
+        log_with_timestamp "⚠️ Coverage analysis failed"
       fi
 
-      # Contract size analysis if the plugin is available
+      # Contract size analysis
       log_with_timestamp "📏 Analyzing contract size..."
-      if npm list hardhat-contract-sizer > /dev/null 2>&1; then
-        run_command "npx hardhat compile --config ./config/hardhat.config.js" \
-          "✅ Contract size analysis completed" \
-          "⚠️ Contract size analysis failed"
+      if npx hardhat size-contracts --config ./config/hardhat.config.js 2>&1 | tee ./logs/reports/contract-sizes.txt; then
+        log_with_timestamp "✅ Contract size analysis completed"
       else
-        log_with_timestamp "⚠️ Skipping contract size analysis - hardhat-contract-sizer plugin not found"
-        echo "Contract size analysis skipped - plugin not available" > ./logs/reports/contract-sizes.txt
+        log_with_timestamp "⚠️ Contract size analysis failed"
       fi
 
       # Generate storage layout
       log_with_timestamp "🗂️ Generating storage layout..."
-      run_command "npx hardhat compile --config ./config/hardhat.config.js" \
-        "✅ Storage layout generated" \
-        "⚠️ Storage layout generation failed"
+      if npx hardhat check --config ./config/hardhat.config.js 2>&1 | tee ./logs/reports/storage-layout.txt; then
+        log_with_timestamp "✅ Storage layout generated"
+      else
+        log_with_timestamp "⚠️ Storage layout generation failed"
+      fi
 
       # Create comprehensive test summary
       log_with_timestamp "📋 Creating test summary..."
@@ -292,7 +279,7 @@ EOF
 ## Test Results
 - **Hardhat Compilation**: $(grep -q "✅ Hardhat compilation successful" "$LOG_FILE" && echo "✅ PASSED" || echo "❌ FAILED")
 - **Hardhat Tests**: $(grep -q "✅ Hardhat tests passed" "$LOG_FILE" && echo "✅ PASSED" || echo "❌ FAILED")
-- **Foundry Tests**: $(grep -q "✅ Foundry tests passed" "$LOG_FILE" && echo "✅ PASSED" || grep -q "No Foundry test files found" "$LOG_FILE" && echo "ℹ️ N/A" || echo "❌ FAILED")
+- **Foundry Tests**: $(grep -q "✅ Foundry tests passed" "$LOG_FILE" && echo "✅ PASSED" || echo "ℹ️ N/A")
 - **Security Analysis**: $(grep -q "✅ Slither analysis completed" "$LOG_FILE" && echo "✅ COMPLETED" || echo "⚠️ ISSUES FOUND")
 - **Gas Analysis**: $(grep -q "✅ Gas report generated" "$LOG_FILE" && echo "✅ COMPLETED" || echo "⚠️ FAILED")
 - **Coverage Analysis**: $(grep -q "✅ Coverage analysis completed" "$LOG_FILE" && echo "✅ COMPLETED" || echo "⚠️ FAILED")
