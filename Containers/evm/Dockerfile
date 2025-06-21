@@ -25,11 +25,16 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && node --version \
     && npm --version
 
-# Create a Python virtual environment and install Slither
+# Create a Python virtual environment and install Slither and solc-select
 RUN python3 -m venv /opt/venv && \
     . /opt/venv/bin/activate && \
-    pip install slither-analyzer && \
-    echo 'source /opt/venv/bin/activate' >> /root/.bashrc
+    pip install slither-analyzer solc-select && \
+    echo 'source /opt/venv/bin/activate' >> /root/.bashrc && \
+    solc-select install 0.8.24 && \
+    solc-select install 0.8.18 && \
+    solc-select install 0.8.17 && \
+    solc-select install 0.6.12 && \
+    solc-select use 0.8.24
 
 # Add virtual environment to PATH
 ENV PATH="/opt/venv/bin:${PATH}"
