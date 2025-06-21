@@ -19,22 +19,17 @@ RUN apt-get update && apt-get install -y \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js v16 (LTS) instead of v18 for better compatibility
-RUN curl -fsSL https://deb.nodesource.com/setup_16.x | bash - \
+# Install Node.js v18 (LTS)
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     && node --version \
     && npm --version
 
-# Create a Python virtual environment and install Slither and solc-select
+# Create a Python virtual environment and install Slither
 RUN python3 -m venv /opt/venv && \
     . /opt/venv/bin/activate && \
-    pip install slither-analyzer solc-select && \
-    echo 'source /opt/venv/bin/activate' >> /root/.bashrc && \
-    solc-select install 0.8.24 && \
-    solc-select install 0.8.18 && \
-    solc-select install 0.8.17 && \
-    solc-select install 0.6.12 && \
-    solc-select use 0.8.24
+    pip install slither-analyzer && \
+    echo 'source /opt/venv/bin/activate' >> /root/.bashrc
 
 # Add virtual environment to PATH
 ENV PATH="/opt/venv/bin:${PATH}"
@@ -47,12 +42,15 @@ RUN apt-get update && apt-get install -y \
     python3 make g++ \
     && npm install -g node-gyp
 
-# Copy package.json and create package-lock.json
-COPY package.json ./
+# Copy package.json and install Node.js dependencies
+COPY package.json package-lock.json* ./
+RUN npm install --no-optional || npm install --no-optional --force
 
-# Install dependencies with forced resolution to avoid conflicts
-RUN npm install --force && \
-    npm install --save-dev hardhat-gas-reporter solidity-coverage hardhat-contract-sizer @openzeppelin/hardhat-upgrades --force
+# Install additional security and analysis tools
+RUN npm install -g @openzeppelin/hardhat-upgrades \
+    hardhat-contract-sizer hardhat-docgen hardhat-storage-layout \
+    @ethereum/security-analysis solidity-coverage hardhat-gas-reporter eth-gas-reporter \
+    || echo "Some packages may not be available"
 
 # Copy all application files
 COPY . .
