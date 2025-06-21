@@ -19,8 +19,8 @@ RUN apt-get update && apt-get install -y \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js v18 (LTS)
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+# Install Node.js v16 (LTS) instead of v18 for better compatibility
+RUN curl -fsSL https://deb.nodesource.com/setup_16.x | bash - \
     && apt-get install -y nodejs \
     && node --version \
     && npm --version
@@ -47,15 +47,12 @@ RUN apt-get update && apt-get install -y \
     python3 make g++ \
     && npm install -g node-gyp
 
-# Copy package.json and install Node.js dependencies with legacy-peer-deps flag
-COPY package.json package-lock.json* ./
-RUN npm install --legacy-peer-deps || npm install --legacy-peer-deps --force
+# Copy package.json and create package-lock.json
+COPY package.json ./
 
-# Install additional security and analysis tools
-RUN npm install -g --legacy-peer-deps @openzeppelin/hardhat-upgrades \
-    hardhat-contract-sizer hardhat-docgen hardhat-storage-layout \
-    hardhat-gas-reporter solidity-coverage \
-    || echo "Some packages may not be available"
+# Install dependencies with forced resolution to avoid conflicts
+RUN npm install --force && \
+    npm install --save-dev hardhat-gas-reporter solidity-coverage hardhat-contract-sizer @openzeppelin/hardhat-upgrades --force
 
 # Copy all application files
 COPY . .
