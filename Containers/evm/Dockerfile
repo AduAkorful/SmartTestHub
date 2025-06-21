@@ -47,14 +47,14 @@ RUN apt-get update && apt-get install -y \
     python3 make g++ \
     && npm install -g node-gyp
 
-# Copy package.json and install Node.js dependencies
+# Copy package.json and install Node.js dependencies with legacy-peer-deps flag
 COPY package.json package-lock.json* ./
-RUN npm install --no-optional || npm install --no-optional --force
+RUN npm install --legacy-peer-deps || npm install --legacy-peer-deps --force
 
 # Install additional security and analysis tools
-RUN npm install -g @openzeppelin/hardhat-upgrades \
+RUN npm install -g --legacy-peer-deps @openzeppelin/hardhat-upgrades \
     hardhat-contract-sizer hardhat-docgen hardhat-storage-layout \
-    @ethereum/security-analysis solidity-coverage hardhat-gas-reporter eth-gas-reporter \
+    hardhat-gas-reporter solidity-coverage \
     || echo "Some packages may not be available"
 
 # Copy all application files
