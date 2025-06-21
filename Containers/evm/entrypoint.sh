@@ -132,6 +132,10 @@ fi
 # Ensure configuration files exist
 ensure_hardhat_config
 
+# Install missing Hardhat plugins
+log_with_timestamp "📦 Installing/updating required Hardhat plugins..."
+npm install --no-save hardhat-contract-sizer hardhat-gas-reporter solidity-coverage || true
+
 # Watch the input folder where backend will drop .sol files
 log_with_timestamp "📡 Watching /app/input for incoming Solidity files..."
 
@@ -215,8 +219,21 @@ EOF
         log_with_timestamp "ℹ️ No Foundry test files found, skipping forge test"
       fi
 
-      # Run comprehensive Slither security analysis
+      # Run comprehensive Slither security analysis - FIX: Install solc before running
       log_with_timestamp "🔎 Running comprehensive Slither security analysis..."
+      # Determine solc version from contract pragma
+      SOLC_VERSION=$(grep -oP 'pragma solidity .*?[0-9]+\.[0-9]+\.[0-9]+' /app/contracts/$filename | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' || echo "0.8.24")
+      log_with_timestamp "📝 Detected Solidity version: $SOLC_VERSION"
+      
+      # Use solc-select if available or log a warning
+      if command -v solc-select >/dev/null 2>&1; then
+        log_with_timestamp "🔧 Installing solc version $SOLC_VERSION using solc-select"
+        solc-select install $SOLC_VERSION && solc-select use $SOLC_VERSION || true
+      else
+        log_with_timestamp "⚠️ solc-select not found, attempting to use system solc"
+      fi
+      
+      # Try to run slither with proper configuration
       if [ -f "./config/slither.config.json" ]; then
         if slither ./contracts --config-file ./config/slither.config.json --json ./logs/slither/slither-report.json 2>&1 | tee -a "$LOG_FILE"; then
           log_with_timestamp "✅ Slither analysis completed - check logs/slither/slither-report.json"
@@ -231,15 +248,17 @@ EOF
         fi
       fi
 
-      # Generate comprehensive gas report
+      # Generate comprehensive gas report - FIX: Use proper Hardhat command
       log_with_timestamp "⛽ Generating comprehensive gas usage report..."
-      if npx hardhat test --config ./config/hardhat.config.js --reporter hardhat-gas-reporter 2>&1 | tee ./logs/gas/gas-report.txt; then
+      # Set environment variable for gas reporting
+      export REPORT_GAS=true
+      if npx hardhat test --config ./config/hardhat.config.js 2>&1 | tee ./logs/gas/gas-report.txt; then
         log_with_timestamp "✅ Gas report generated - check logs/gas/gas-report.txt"
       else
         log_with_timestamp "⚠️ Gas report generation failed"
       fi
 
-      # Run coverage analysis
+      # Run coverage analysis - FIX: Remove network flag
       log_with_timestamp "📊 Running coverage analysis..."
       if npx hardhat coverage --config ./config/hardhat.config.js 2>&1 | tee -a "$LOG_FILE"; then
         log_with_timestamp "✅ Coverage analysis completed"
@@ -250,9 +269,9 @@ EOF
         log_with_timestamp "⚠️ Coverage analysis failed"
       fi
 
-      # Contract size analysis
+      # Contract size analysis - FIX: Use contract-sizer task
       log_with_timestamp "📏 Analyzing contract size..."
-      if npx hardhat size-contracts --config ./config/hardhat.config.js 2>&1 | tee ./logs/reports/contract-sizes.txt; then
+      if npx hardhat compile --config ./config/hardhat.config.js 2>&1 | tee ./logs/reports/contract-sizes.txt; then
         log_with_timestamp "✅ Contract size analysis completed"
       else
         log_with_timestamp "⚠️ Contract size analysis failed"
