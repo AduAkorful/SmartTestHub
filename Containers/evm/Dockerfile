@@ -1,4 +1,4 @@
-FROM ghcr.io/foundry-rs/foundry:v1.5.0
+FROM ghcr.io/foundry-rs/foundry:latest
 
 # Set the user to root explicitly
 USER root
