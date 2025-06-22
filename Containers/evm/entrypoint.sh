@@ -37,7 +37,7 @@ setup_hardhat_environment() {
     
     # Create package.json if it doesn't exist
     if [ ! -f "/app/package.json" ]; then
-        cat > "/app/package.json" <<EOF
+        cat > "/app/package.json" << EOF
 {
   "name": "smart-test-hub",
   "version": "1.0.0",
@@ -92,14 +92,12 @@ EOF
     fi
     
     # Create minimal hardhat config
-    cat > "/app/hardhat.config.js" <<EOF
+    cat > "/app/hardhat.config.js" << EOF
 /**
  * SmartTestHub - Minimal Hardhat Configuration
  */
 
-require('hardhat-gas-reporter');
-
-// Optional plugins - only load if installed
+try { require('hardhat-gas-reporter'); } catch (e) {}
 try { require('solidity-coverage'); } catch (e) {}
 
 /** @type import('hardhat/config').HardhatUserConfig */
@@ -151,7 +149,7 @@ EOF
 setup_slither_config() {
     log_with_timestamp "🔧 Setting up Slither configuration..."
     
-    cat > "/app/config/slither.config.json" <<EOF
+    cat > "/app/config/slither.config.json" << EOF
 {
   "detectors_to_exclude": [],
   "exclude_informational": false,
@@ -171,7 +169,7 @@ EOF
 create_enhanced_analyzer() {
     log_with_timestamp "🔧 Creating enhanced contract analyzer..."
     
-    cat > "/app/scripts/analyze-contract.js" <<EOF
+    cat > "/app/scripts/analyze-contract.js" << 'EOF'
 /**
  * SmartTestHub - Enhanced Contract Analyzer
  * Provides detailed static analysis for Solidity contracts
@@ -414,7 +412,7 @@ function analyzeContract(filePath) {
     try {
         // Read the file
         if (!fs.existsSync(filePath)) {
-            return { error: \`File not found: \${filePath}\` };
+            return { error: `File not found: ${filePath}` };
         }
         
         const content = fs.readFileSync(filePath, 'utf8');
@@ -428,7 +426,7 @@ function analyzeContract(filePath) {
         const modifiers = detectModifiers(content);
         const functions = detectFunctions(content);
         const stateVars = detectStateVariables(content);
-        const lines = content.split('\\n');
+        const lines = content.split('\n');
         
         // Analyze security aspects
         const securityFindings = [];
@@ -482,7 +480,7 @@ function analyzeContract(filePath) {
             missingPractices
         };
     } catch (error) {
-        return { error: \`Error analyzing contract: \${error.message}\` };
+        return { error: `Error analyzing contract: ${error.message}` };
     }
 }
 
@@ -493,69 +491,69 @@ function analyzeContract(filePath) {
  */
 function generateMarkdownReport(analysis) {
     if (analysis.error) {
-        return \`# Analysis Error\n\n\${analysis.error}\`;
+        return `# Analysis Error\n\n${analysis.error}`;
     }
     
     // Build the markdown report
-    let report = \`# Contract Analysis: \${analysis.contractName}\n\n\`;
+    let report = `# Contract Analysis: ${analysis.contractName}\n\n`;
     
     // Basic information
-    report += \`## Basic Information\n\n\`;
-    report += \`- **File**: \${path.basename(analysis.filePath)}\n\`;
-    report += \`- **Contract Name**: \${analysis.contractName}\n\`;
-    report += \`- **Solidity Version**: \${analysis.version}\n\`;
-    report += \`- **File Size**: \${analysis.fileSize} bytes\n\`;
-    report += \`- **Lines of Code**: \${analysis.lineCount}\n\n\`;
+    report += `## Basic Information\n\n`;
+    report += `- **File**: ${path.basename(analysis.filePath)}\n`;
+    report += `- **Contract Name**: ${analysis.contractName}\n`;
+    report += `- **Solidity Version**: ${analysis.version}\n`;
+    report += `- **File Size**: ${analysis.fileSize} bytes\n`;
+    report += `- **Lines of Code**: ${analysis.lineCount}\n\n`;
     
     // Inheritance
     if (analysis.parents.length > 0) {
-        report += \`- **Inherits From**: \${analysis.parents.join(', ')}\n\n\`;
+        report += `- **Inherits From**: ${analysis.parents.join(', ')}\n\n`;
     }
     
     // Imports
     if (analysis.imports.length > 0) {
-        report += \`## Imports\n\n\`;
+        report += `## Imports\n\n`;
         analysis.imports.forEach(imp => {
-            report += \`- \${imp}\n\`;
+            report += `- ${imp}\n`;
         });
-        report += \`\n\`;
+        report += `\n`;
     }
     
     // Functions
     if (analysis.functions.length > 0) {
-        report += \`## Functions\n\n\`;
+        report += `## Functions\n\n`;
         analysis.functions.forEach(func => {
-            report += \`- \`\`\`\${func.visibility}\`\`\` \`\`\`function \${func.name}(\${func.params})\`\`\`\n\`;
+            report += `- \`${func.visibility}\` \`function ${func.name}(${func.params})\`\n`;
         });
-        report += \`\n\`;
+        report += `\n`;
     }
     
     // Security issues - prioritize these at the top if any exist
     if (analysis.securityIssues.length > 0) {
-        report += \`## ⚠️ Security Issues\n\n\`;
+        report += `## ⚠️ Security Issues\n\n`;
         analysis.securityIssues.forEach(issue => {
-            report += \`### \${issue.severity === 'HIGH' ? '🚨 ' : issue.severity === 'MEDIUM' ? '⚠️ ' : '🔍 '}\${issue.name}\n\n\`;
-            report += \`- **Severity**: \${issue.severity}\n\`;
-            report += \`- **Occurrences**: \${issue.count}\n\`;
-            report += \`- **Description**: \${issue.description}\n\n\`;
+            report += `### ${issue.severity === 'HIGH' ? '🚨 ' : issue.severity === 'MEDIUM' ? '⚠️ ' : '🔍 '}${issue.name}\n\n`;
+            report += `- **Severity**: ${issue.severity}\n`;
+            report += `- **Occurrences**: ${issue.count}\n`;
+            report += `- **Description**: ${issue.description}\n\n`;
         });
     }
     
     // Missing best practices
     if (analysis.missingPractices.length > 0) {
-        report += \`## 📝 Recommended Best Practices\n\n\`;
+        report += `## 📝 Recommended Best Practices\n\n`;
         analysis.missingPractices.forEach(practice => {
-            report += \`### \${practice.name}\n\n\`;
-            report += \`- **Description**: \${practice.description}\n\n\`;
+            report += `### ${practice.name}\n\n`;
+            report += `- **Description**: ${practice.description}\n\n`;
         });
     }
     
     // Comprehensive security check results
-    report += \`## Security Check Results\n\n\`;
-    report += \`| Check | Status | Count | Severity |\n\`;
-    report += \`|-------|--------|-------|----------|\n\`;
+    report += `## Security Check Results\n\n`;
+    report += `| Check | Status | Count | Severity |\n`;
+    report += `|-------|--------|-------|----------|\n`;
     analysis.securityFindings.forEach(finding => {
-        report += \`| \${finding.name} | \${finding.status} | \${finding.count} | \${finding.severity || 'N/A'} |\n\`;
+        report += `| ${finding.name} | ${finding.status} | ${finding.count} | ${finding.severity || 'N/A'} |\n`;
     });
     
     return report;
@@ -570,7 +568,7 @@ function main() {
     const filePath = args[0] || './contracts/SimpleToken.sol';
     const outputPath = args[1] || './analysis-report.md';
     
-    console.log(\`Analyzing contract: \${filePath}\`);
+    console.log(`Analyzing contract: ${filePath}`);
     const analysis = analyzeContract(filePath);
     
     if (analysis.error) {
@@ -584,7 +582,7 @@ function main() {
     
     // Also output to console
     console.log(report);
-    console.log(\`\nReport saved to \${outputPath}\`);
+    console.log(`\nReport saved to ${outputPath}`);
 }
 
 // Run the main function if this is executed as a script
@@ -607,7 +605,7 @@ EOF
 create_gas_report_formatter() {
     log_with_timestamp "🔧 Creating gas report formatter..."
     
-    cat > "/app/scripts/format-gas-report.js" <<EOF
+    cat > "/app/scripts/format-gas-report.js" << 'EOF'
 /**
  * SmartTestHub - Gas Report Formatter
  * Enhances gas reports with more readable formatting and context
@@ -618,41 +616,41 @@ const path = require('path');
 function formatGasReport(inputFile, outputFile) {
     try {
         if (!fs.existsSync(inputFile)) {
-            console.error(\`Input file not found: \${inputFile}\`);
+            console.error(`Input file not found: ${inputFile}`);
             return false;
         }
         
         let content = fs.readFileSync(inputFile, 'utf8');
         
         // Parse the gas report and enhance it
-        let enhancedReport = "# Detailed Gas Usage Report\\n\\n";
+        let enhancedReport = "# Detailed Gas Usage Report\n\n";
         
         // Add context about gas costs
-        enhancedReport += "## Gas Cost Context\\n\\n";
-        enhancedReport += "Gas is the computational cost unit in Ethereum. Optimizing gas usage is crucial for:\\n";
-        enhancedReport += "- Reducing transaction costs for users\\n";
-        enhancedReport += "- Ensuring contracts can fit within block gas limits\\n";
-        enhancedReport += "- Avoiding out-of-gas errors in complex operations\\n\\n";
+        enhancedReport += "## Gas Cost Context\n\n";
+        enhancedReport += "Gas is the computational cost unit in Ethereum. Optimizing gas usage is crucial for:\n";
+        enhancedReport += "- Reducing transaction costs for users\n";
+        enhancedReport += "- Ensuring contracts can fit within block gas limits\n";
+        enhancedReport += "- Avoiding out-of-gas errors in complex operations\n\n";
         
         // Add efficiency guidelines
-        enhancedReport += "## Efficiency Guidelines\\n\\n";
-        enhancedReport += "| Gas Cost | Classification | Description |\\n";
-        enhancedReport += "|----------|---------------|-------------|\\n";
-        enhancedReport += "| < 20,000 | Very Efficient | Excellent optimization |\\n";
-        enhancedReport += "| 20,000 - 50,000 | Efficient | Good optimization |\\n";
-        enhancedReport += "| 50,000 - 100,000 | Average | Could be improved |\\n";
-        enhancedReport += "| 100,000 - 200,000 | Inefficient | Needs optimization |\\n";
-        enhancedReport += "| > 200,000 | Very Inefficient | Critical optimization required |\\n\\n";
+        enhancedReport += "## Efficiency Guidelines\n\n";
+        enhancedReport += "| Gas Cost | Classification | Description |\n";
+        enhancedReport += "|----------|---------------|-------------|\n";
+        enhancedReport += "| < 20,000 | Very Efficient | Excellent optimization |\n";
+        enhancedReport += "| 20,000 - 50,000 | Efficient | Good optimization |\n";
+        enhancedReport += "| 50,000 - 100,000 | Average | Could be improved |\n";
+        enhancedReport += "| 100,000 - 200,000 | Inefficient | Needs optimization |\n";
+        enhancedReport += "| > 200,000 | Very Inefficient | Critical optimization required |\n\n";
         
         // Add the original report data, parsed into markdown tables
-        enhancedReport += "## Raw Gas Report\\n\\n";
-        enhancedReport += "\\`\\`\\`\\n" + content + "\\n\\`\\`\\`\\n";
+        enhancedReport += "## Raw Gas Report\n\n";
+        enhancedReport += "```\n" + content + "\n```\n";
         
         // Write the enhanced report
         fs.writeFileSync(outputFile, enhancedReport);
         return true;
     } catch (error) {
-        console.error(\`Error formatting gas report: \${error.message}\`);
+        console.error(`Error formatting gas report: ${error.message}`);
         return false;
     }
 }
@@ -665,7 +663,7 @@ if (require.main === module) {
     
     const success = formatGasReport(inputFile, outputFile);
     if (success) {
-        console.log(\`Enhanced gas report saved to \${outputFile}\`);
+        console.log(`Enhanced gas report saved to ${outputFile}`);
     }
 }
 
@@ -680,7 +678,7 @@ EOF
 create_slither_parser() {
     log_with_timestamp "🔧 Creating Slither findings parser..."
     
-    cat > "/app/scripts/parse-slither.js" <<EOF
+    cat > "/app/scripts/parse-slither.js" << 'EOF'
 /**
  * SmartTestHub - Slither Output Parser
  * Extracts useful findings from Slither text output
@@ -691,7 +689,7 @@ const path = require('path');
 function parseSlitherOutput(inputFile, outputFile) {
     try {
         if (!fs.existsSync(inputFile)) {
-            console.error(\`Input file not found: \${inputFile}\`);
+            console.error(`Input file not found: ${inputFile}`);
             return false;
         }
         
@@ -715,10 +713,10 @@ function parseSlitherOutput(inputFile, outputFile) {
         }
         
         // Generate markdown report
-        let markdownReport = "# Security Analysis Findings\\n\\n";
+        let markdownReport = "# Security Analysis Findings\n\n";
         
         if (findings.length === 0) {
-            markdownReport += "✅ **No security issues detected**\\n\\n";
+            markdownReport += "✅ **No security issues detected**\n\n";
         } else {
             // Group findings by severity
             const highSeverity = findings.filter(f => f.severity.includes("High"));
@@ -731,21 +729,21 @@ function parseSlitherOutput(inputFile, outputFile) {
                                                        !f.severity.includes("Informational"));
             
             // Display a summary
-            markdownReport += "## Summary\\n\\n";
-            markdownReport += \`- 🚨 **High Severity Issues**: \${highSeverity.length}\\n\`;
-            markdownReport += \`- ⚠️ **Medium Severity Issues**: \${mediumSeverity.length}\\n\`;
-            markdownReport += \`- ℹ️ **Low Severity Issues**: \${lowSeverity.length}\\n\`;
-            markdownReport += \`- 📝 **Informational Issues**: \${infoSeverity.length}\\n\\n\`;
+            markdownReport += "## Summary\n\n";
+            markdownReport += `- 🚨 **High Severity Issues**: ${highSeverity.length}\n`;
+            markdownReport += `- ⚠️ **Medium Severity Issues**: ${mediumSeverity.length}\n`;
+            markdownReport += `- ℹ️ **Low Severity Issues**: ${lowSeverity.length}\n`;
+            markdownReport += `- 📝 **Informational Issues**: ${infoSeverity.length}\n\n`;
             
             // Function to format a finding group
             const formatSeverityGroup = (group, emoji, title) => {
                 if (group.length === 0) return "";
                 
-                let result = \`## \${emoji} \${title} Issues (\${group.length})\\n\\n\`;
+                let result = `## ${emoji} ${title} Issues (${group.length})\n\n`;
                 
                 group.forEach((finding, idx) => {
-                    result += \`### Issue #\${idx+1}: \${finding.detector}\\n\\n\`;
-                    result += \`\${finding.description}\\n\\n\`;
+                    result += `### Issue #${idx+1}: ${finding.detector}\n\n`;
+                    result += `${finding.description}\n\n`;
                 });
                 
                 return result;
@@ -763,19 +761,19 @@ function parseSlitherOutput(inputFile, outputFile) {
         }
         
         // Add standard recommendations for common issues
-        markdownReport += "## Standard Recommendations\\n\\n";
-        markdownReport += "### Best Practices\\n\\n";
-        markdownReport += "- Always check return values of external calls\\n";
-        markdownReport += "- Use SafeMath for arithmetic operations (if using Solidity < 0.8.0)\\n";
-        markdownReport += "- Avoid using tx.origin for authorization\\n";
-        markdownReport += "- Consider using OpenZeppelin contracts for standard functionality\\n";
-        markdownReport += "- Implement reentrancy guards for external calls\\n";
+        markdownReport += "## Standard Recommendations\n\n";
+        markdownReport += "### Best Practices\n\n";
+        markdownReport += "- Always check return values of external calls\n";
+        markdownReport += "- Use SafeMath for arithmetic operations (if using Solidity < 0.8.0)\n";
+        markdownReport += "- Avoid using tx.origin for authorization\n";
+        markdownReport += "- Consider using OpenZeppelin contracts for standard functionality\n";
+        markdownReport += "- Implement reentrancy guards for external calls\n";
         
         // Write the report
         fs.writeFileSync(outputFile, markdownReport);
         return true;
     } catch (error) {
-        console.error(\`Error parsing Slither output: \${error.message}\`);
+        console.error(`Error parsing Slither output: ${error.message}`);
         return false;
     }
 }
@@ -788,7 +786,7 @@ if (require.main === module) {
     
     const success = parseSlitherOutput(inputFile, outputFile);
     if (success) {
-        console.log(\`Security findings saved to \${outputFile}\`);
+        console.log(`Security findings saved to ${outputFile}`);
     }
 }
 
@@ -803,7 +801,7 @@ EOF
 create_hardhat_test_template() {
     log_with_timestamp "🔧 Creating Hardhat test template..."
     
-    cat > "/app/scripts/test-template.js" <<EOF
+    cat > "/app/scripts/test-template.js" << 'EOF'
 /**
  * SmartTestHub - Hardhat Test Template Generator
  * Creates a comprehensive test suite for a contract
@@ -814,7 +812,7 @@ const path = require('path');
 function generateTestTemplate(contractPath, outputPath) {
     try {
         if (!fs.existsSync(contractPath)) {
-            console.error(\`Contract file not found: \${contractPath}\`);
+            console.error(`Contract file not found: ${contractPath}`);
             return false;
         }
         
@@ -931,7 +929,7 @@ describe("${contractName} Contract Tests", function () {
         fs.writeFileSync(outputPath, testTemplate);
         return true;
     } catch (error) {
-        console.error(\`Error generating test template: \${error.message}\`);
+        console.error(`Error generating test template: ${error.message}`);
         return false;
     }
 }
@@ -941,11 +939,11 @@ if (require.main === module) {
     const args = process.argv.slice(2);
     const contractPath = args[0] || './contracts/SimpleToken.sol';
     const contractName = path.basename(contractPath, '.sol');
-    const outputPath = args[1] || \`./test/\${contractName}.test.js\`;
+    const outputPath = args[1] || `./test/${contractName}.test.js`;
     
     const success = generateTestTemplate(contractPath, outputPath);
     if (success) {
-        console.log(\`Test template saved to \${outputPath}\`);
+        console.log(`Test template saved to ${outputPath}`);
     }
 }
 
@@ -960,7 +958,7 @@ EOF
 create_report_generator() {
     log_with_timestamp "🔧 Creating comprehensive report generator..."
     
-    cat > "/app/scripts/generate-report.js" <<EOF
+    cat > "/app/scripts/generate-report.js" << 'EOF'
 /**
  * SmartTestHub - Comprehensive Report Generator
  * Creates a unified report combining all analysis results
@@ -971,120 +969,120 @@ const path = require('path');
 function generateComprehensiveReport(contractName, outputPath) {
     try {
         const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
-        let report = \`# SmartTestHub: Comprehensive Analysis for \${contractName}\n\n\`;
-        report += \`**Generated at:** \${timestamp}\n\n\`;
+        let report = `# SmartTestHub: Comprehensive Analysis for ${contractName}\n\n`;
+        report += `**Generated at:** ${timestamp}\n\n`;
         
         // Add toc
-        report += \`## Table of Contents\n\n\`;
-        report += \`1. [Contract Overview](#contract-overview)\n\`;
-        report += \`2. [Security Analysis](#security-analysis)\n\`;
-        report += \`3. [Test Results](#test-results)\n\`;
-        report += \`4. [Gas Usage Analysis](#gas-usage-analysis)\n\`;
-        report += \`5. [Size Analysis](#size-analysis)\n\`;
-        report += \`6. [Recommendations](#recommendations)\n\n\`;
+        report += `## Table of Contents\n\n`;
+        report += `1. [Contract Overview](#contract-overview)\n`;
+        report += `2. [Security Analysis](#security-analysis)\n`;
+        report += `3. [Test Results](#test-results)\n`;
+        report += `4. [Gas Usage Analysis](#gas-usage-analysis)\n`;
+        report += `5. [Size Analysis](#size-analysis)\n`;
+        report += `6. [Recommendations](#recommendations)\n\n`;
         
         // Contract Analysis Section
-        report += \`## Contract Overview\n\n\`;
-        const analysisPath = \`/app/logs/reports/\${contractName}-analysis.txt\`;
+        report += `## Contract Overview\n\n`;
+        const analysisPath = `/app/logs/reports/${contractName}-analysis.txt`;
         
         if (fs.existsSync(analysisPath)) {
             const analysisContent = fs.readFileSync(analysisPath, 'utf8');
             // Extract interesting parts
-            const contractInfoMatch = analysisContent.match(/Contract Analysis[\\s\\S]*?Lines of Code:[\\s\\S]*?\\n\\n/);
+            const contractInfoMatch = analysisContent.match(/Contract Analysis[\s\S]*?Lines of Code:[\s\S]*?\n\n/);
             if (contractInfoMatch) {
                 report += contractInfoMatch[0] + '\n';
             }
         } else {
-            report += \`*Contract analysis not available*\n\n\`;
+            report += `*Contract analysis not available*\n\n`;
         }
         
         // Security Analysis Section
-        report += \`## Security Analysis\n\n\`;
-        const securityPath = \`/app/logs/reports/security-findings.md\`;
+        report += `## Security Analysis\n\n`;
+        const securityPath = `/app/logs/reports/security-findings.md`;
         
         if (fs.existsSync(securityPath)) {
             const securityContent = fs.readFileSync(securityPath, 'utf8')
-                .replace(/^# .*\\n\\n/, '') // Remove the heading
-                .replace(/^## Standard Recommendations[\\s\\S]*$/, ''); // Remove standard recommendations
+                .replace(/^# .*\n\n/, '') // Remove the heading
+                .replace(/^## Standard Recommendations[\s\S]*$/, ''); // Remove standard recommendations
             report += securityContent + '\n';
         } else {
-            const slitherPath = \`/app/logs/slither/\${contractName}-report.txt\`;
+            const slitherPath = `/app/logs/slither/${contractName}-report.txt`;
             if (fs.existsSync(slitherPath)) {
-                report += \`Security analysis was performed but the results need manual review. See the raw output at: \`\`\`\${slitherPath}\`\`\`\n\n\`;
+                report += `Security analysis was performed but the results need manual review. See the raw output at: \`${slitherPath}\`\n\n`;
             } else {
-                report += \`*Security analysis not available*\n\n\`;
+                report += `*Security analysis not available*\n\n`;
             }
         }
         
         // Test Results Section
-        report += \`## Test Results\n\n\`;
+        report += `## Test Results\n\n`;
         
         // Check Foundry Test Results
         const foundryReportPath = '/app/logs/foundry/foundry-test-report.json';
         if (fs.existsSync(foundryReportPath)) {
             try {
                 const foundryData = JSON.parse(fs.readFileSync(foundryReportPath, 'utf8'));
-                report += \`### Foundry Tests\n\n\`;
-                report += \`- **Status**: ${foundryData.success ? '✅ Passed' : '❌ Failed'}\n\`;
+                report += `### Foundry Tests\n\n`;
+                report += `- **Status**: ${foundryData.success ? '✅ Passed' : '❌ Failed'}\n`;
                 
                 if (foundryData.test_results) {
                     const testCount = Object.keys(foundryData.test_results).length;
                     const passedTests = Object.values(foundryData.test_results).filter(t => t.success).length;
-                    report += \`- **Tests**: \${passedTests}/${testCount} passed\n\`;
+                    report += `- **Tests**: ${passedTests}/${testCount} passed\n`;
                 }
                 report += '\n';
             } catch (e) {
-                report += \`*Foundry test results could not be parsed*\n\n\`;
+                report += `*Foundry test results could not be parsed*\n\n`;
             }
         }
         
         // Check for Hardhat Test Results
-        const hardhatResultPath = \`/app/logs/reports/\${contractName}-hardhat-tests.txt\`;
+        const hardhatResultPath = `/app/logs/reports/${contractName}-hardhat-tests.txt`;
         if (fs.existsSync(hardhatResultPath)) {
             const hardhatResults = fs.readFileSync(hardhatResultPath, 'utf8');
-            report += \`### Hardhat Tests\n\n\`;
-            report += \`\`\`\n\${hardhatResults}\n\`\`\`\n\n\`;
+            report += `### Hardhat Tests\n\n`;
+            report += `\`\`\`\n${hardhatResults}\n\`\`\`\n\n`;
         }
         
         // Gas Usage Section
-        report += \`## Gas Usage Analysis\n\n\`;
+        report += `## Gas Usage Analysis\n\n`;
         const gasReportPath = '/app/logs/gas/gas-report.txt';
         if (fs.existsSync(gasReportPath)) {
             const gasReportContent = fs.readFileSync(gasReportPath, 'utf8');
-            report += \`### Gas Consumption\n\n\`;
-            report += \`\`\`\n\${gasReportContent}\n\`\`\`\n\n\`;
+            report += `### Gas Consumption\n\n`;
+            report += `\`\`\`\n${gasReportContent}\n\`\`\`\n\n`;
             
-            report += \`### Gas Optimization Tips\n\n\`;
-            report += \`- Use \`\`\`view\`\`\` functions where possible\n\`;
-            report += \`- Pack variables to use fewer storage slots\n\`;
-            report += \`- Avoid unnecessary storage reads/writes inside loops\n\`;
-            report += \`- Use events for storing data that doesn't need to be accessed on-chain\n\`;
+            report += `### Gas Optimization Tips\n\n`;
+            report += `- Use \`view\` functions where possible\n`;
+            report += `- Pack variables to use fewer storage slots\n`;
+            report += `- Avoid unnecessary storage reads/writes inside loops\n`;
+            report += `- Use events for storing data that doesn't need to be accessed on-chain\n`;
         }
         
         // Size Analysis Section
-        report += \`## Size Analysis\n\n\`;
-        const sizePath = \`/app/logs/reports/\${contractName}-size.txt\`;
+        report += `## Size Analysis\n\n`;
+        const sizePath = `/app/logs/reports/${contractName}-size.txt`;
         if (fs.existsSync(sizePath)) {
             const sizeContent = fs.readFileSync(sizePath, 'utf8');
-            report += \`\`\`\n\${sizeContent}\n\`\`\`\n\n\`;
+            report += `\`\`\`\n${sizeContent}\n\`\`\`\n\n`;
             
             // Check if we need to warn about size
             if (sizeContent.includes('Exceeds limit')) {
-                report += \`⚠️ **Warning**: Contract exceeds the EIP-170 size limit of 24KB and cannot be deployed to Ethereum Mainnet. Consider splitting functionality into multiple contracts.\n\n\`;
+                report += `⚠️ **Warning**: Contract exceeds the EIP-170 size limit of 24KB and cannot be deployed to Ethereum Mainnet. Consider splitting functionality into multiple contracts.\n\n`;
             }
         }
         
         // Recommendations Section
-        report += \`## Recommendations\n\n\`;
+        report += `## Recommendations\n\n`;
         
         // Pull recommendations from security analysis
-        const analysisFile = \`/app/logs/reports/\${contractName}-analysis.txt\`;
+        const analysisFile = `/app/logs/reports/${contractName}-analysis.txt`;
         if (fs.existsSync(analysisFile)) {
             const analysis = fs.readFileSync(analysisFile, 'utf8');
             
             // Extract security issues
             const securityIssues = [];
-            const securitySection = analysis.match(/Simple Security Checks:[\\s\\S]*$/);
+            const securitySection = analysis.match(/Simple Security Checks:[\s\S]*$/);
             if (securitySection) {
                 const issues = securitySection[0].match(/- .*?: .*? - (⚠️ .*)/g);
                 if (issues) {
@@ -1095,27 +1093,27 @@ function generateComprehensiveReport(contractName, outputPath) {
             }
             
             if (securityIssues.length > 0) {
-                report += \`### Security Recommendations\n\n\`;
+                report += `### Security Recommendations\n\n`;
                 securityIssues.forEach(issue => {
-                    report += \`- \${issue}\n\`;
+                    report += `- ${issue}\n`;
                 });
                 report += '\n';
             }
         }
         
         // Standard best practices
-        report += \`### General Best Practices\n\n\`;
-        report += \`1. **Add Comprehensive Tests**: Aim for 100% code coverage\n\`;
-        report += \`2. **Document Functions**: Use NatSpec comments for all public functions\n\`;
-        report += \`3. **Perform Code Review**: Have at least one other developer review the code\n\`;
-        report += \`4. **Consider Formal Verification**: For high-value contracts\n\`;
-        report += \`5. **Use Established Patterns**: Import from established libraries like OpenZeppelin\n\`;
+        report += `### General Best Practices\n\n`;
+        report += `1. **Add Comprehensive Tests**: Aim for 100% code coverage\n`;
+        report += `2. **Document Functions**: Use NatSpec comments for all public functions\n`;
+        report += `3. **Perform Code Review**: Have at least one other developer review the code\n`;
+        report += `4. **Consider Formal Verification**: For high-value contracts\n`;
+        report += `5. **Use Established Patterns**: Import from established libraries like OpenZeppelin\n`;
         
         // Write the report
         fs.writeFileSync(outputPath, report);
         return true;
     } catch (error) {
-        console.error(\`Error generating comprehensive report: \${error.message}\`);
+        console.error(`Error generating comprehensive report: ${error.message}`);
         return false;
     }
 }
@@ -1124,11 +1122,11 @@ function generateComprehensiveReport(contractName, outputPath) {
 if (require.main === module) {
     const args = process.argv.slice(2);
     const contractName = args[0] || 'SimpleToken';
-    const outputPath = args[1] || \`/app/logs/reports/\${contractName}-comprehensive-report.md\`;
+    const outputPath = args[1] || `/app/logs/reports/${contractName}-comprehensive-report.md`;
     
     const success = generateComprehensiveReport(contractName, outputPath);
     if (success) {
-        console.log(\`Comprehensive report saved to \${outputPath}\`);
+        console.log(`Comprehensive report saved to ${outputPath}`);
     }
 }
 
@@ -1220,7 +1218,7 @@ while read -r directory events filename; do
           log_with_timestamp "⚠️ Failed to generate test file, creating a simple one"
           
           # Create a simple test file as fallback
-          cat > "/app/test/${contract_name}.test.js" <<EOF
+          cat > "/app/test/${contract_name}.test.js" << EOF
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
