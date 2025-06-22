@@ -204,8 +204,8 @@ while read -r directory events filename; do
     if [ -f "$MARKER_FILE" ]; then
         LAST_PROCESSED=$(cat "$MARKER_FILE")
         CURRENT_TIME=$(date +%s)
-        # Only process if last processed more than 5 seconds ago
-        if (( $CURRENT_TIME - $LAST_PROCESSED < 5 )); then
+        # Only process if last processed more than 30 seconds ago
+        if (( $CURRENT_TIME - $LAST_PROCESSED < 30 )); then
             log_with_timestamp "⏭️ Skipping duplicate processing of $filename (processed ${LAST_PROCESSED}s ago)"
             continue
         fi
