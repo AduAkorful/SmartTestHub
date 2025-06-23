@@ -357,8 +357,9 @@ EOF
   fi
 done
 
+# Aggregate logs into a single comprehensive report after all contracts are processed
 if command -v node > /dev/null 2>&1; then
-  node /app/scripts/aggregate-all-logs.js
+  node /app/scripts/aggregate-all-logs.js | tee -a "$LOG_FILE"
 else
   log_with_timestamp "⚠️ Node.js is not installed; skipping log aggregation"
 fi
