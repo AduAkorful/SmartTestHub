@@ -60,7 +60,7 @@ command_exists() {
 start_xray_daemon() {
     log_with_timestamp "📡 Setting up AWS X-Ray daemon..." "xray"
     
-    which xray > /dev/null 2>&1
+    command -v xray > /dev/null 2>&1
     if [ $? -eq 0 ]; then
         log_with_timestamp "📡 Found X-Ray daemon at $(which xray)" "xray"
         
@@ -131,50 +131,7 @@ setup_solana_environment() {
     
     # Check if solana is in the PATH
     if ! command_exists solana; then
-        log_with_timestamp "⚠️ Solana CLI not found in PATH" "error"
-        log_with_timestamp "PATH: $PATH" "error"
-        
-        # Try to find Solana installation
-        if [ -d "$HOME/.local/share/solana/install/active_release/bin" ]; then
-            log_with_timestamp "🔍 Found Solana installation, adding to PATH" "error"
-            export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
-            log_with_timestamp "Updated PATH: $PATH" "error"
-        else
-            log_with_timestamp "❌ Cannot find Solana installation" "error"
-            # Check if solana was installed during container build
-            if [ -d "/root/.local/share/solana/install/active_release/bin" ]; then
-                log_with_timestamp "🔍 Found Solana installation in /root/.local, adding to PATH"
-                export PATH="/root/.local/share/solana/install/active_release/bin:$PATH"
-                log_with_timestamp "Updated PATH: $PATH"
-                
-                # List files in the bin directory to debug
-                log_with_timestamp "Contents of /root/.local/share/solana/install/active_release/bin:"
-                ls -la /root/.local/share/solana/install/active_release/bin/ | while read -r line; do
-                    log_with_timestamp "   $line"
-                done
-            else
-                log_with_timestamp "🔄 Attempting to install Solana..."
-                curl -sSfL https://release.solana.com/v1.17.3/install -o install_solana.sh
-                sh install_solana.sh
-                export PATH="/root/.local/share/solana/install/active_release/bin:$PATH"
-                log_with_timestamp "Updated PATH after install: $PATH"
-            fi
-        fi
-    fi
-    
-    # Double check after PATH update
-    if ! command_exists solana; then
-        log_with_timestamp "❌ Solana CLI still not found after PATH update" "error"
-        log_with_timestamp "Checking directories:" "error"
-        ls -la /root/.local/share/solana/install/ || echo "Directory does not exist"
-        ls -la /root/.local/share/solana/install/active_release/bin/ || echo "Directory does not exist"
-        
-        # Try directly accessing the binary
-        if [ -f "/root/.local/share/solana/install/active_release/bin/solana" ]; then
-            log_with_timestamp "Found solana binary directly, trying to use it"
-            /root/.local/share/solana/install/active_release/bin/solana --version || log_with_timestamp "Failed to run solana binary" "error"
-        fi
-        
+        log_with_timestamp "❌ Solana CLI not found in PATH. Please rebuild the Docker image to include the Solana CLI." "error"
         return 1
     fi
     
@@ -410,7 +367,7 @@ run_tests_with_coverage() {
     mkdir -p "/app/logs/coverage"
     
     # Run tests with tarpaulin
-    if cargo tarpaulin --config-path /app/tarpaulin.toml -v; then
+    if cargo tarpaulin --config /app/tarpaulin.toml -v; then
         log_with_timestamp "✅ Tests and coverage completed successfully"
     else
         log_with_timestamp "⚠️ Tests or coverage generation had some issues" "error"
@@ -429,6 +386,8 @@ run_security_audit() {
     local contract_name="$1"
     
     log_with_timestamp "🛡️ Running security audit for $contract_name..." "security"
+    # Generate Cargo.lock first
+    cargo generate-lockfile || true
     
     # Create security directory
     mkdir -p "/app/logs/security"
@@ -575,8 +534,8 @@ setup_solana_environment || {
 # Ensure watch directory exists
 mkdir -p "$watch_dir"
 
-# Start file watching loop
-inotifywait -m -e close_write,moved_to,create "$watch_dir" |
+echo "Setting up directory watch on $watch_dir..."
+if ! inotifywait -m -e close_write,moved_to,create "$watch_dir" 2>/dev/null | 
 while read -r directory events filename; do
     if [[ "$filename" == *.rs ]]; then
         {
@@ -635,9 +594,9 @@ EOF
                     if anchor build 2>&1 | tee -a "$LOG_FILE"; then
                         log_with_timestamp "✅ Anchor build successful"
                     else
-                        log_with_timestamp "❌ Anchor build failed, trying cargo build-sbf..." "error"
-                        if cargo build-sbf 2>&1 | tee -a "$LOG_FILE"; then
-                            log_with_timestamp "✅ Cargo build-sbf successful"
+                        log_with_timestamp "❌ Anchor build failed, trying cargo build..." "error"
+                        if cargo build 2>&1 | tee -a "$LOG_FILE"; then
+                            log_with_timestamp "✅ Cargo build successful"
                         else
                             log_with_timestamp "❌ All builds failed for $contract_name" "error"
                             continue
@@ -645,7 +604,7 @@ EOF
                     fi
                     ;;
                 *)
-                    if cargo build-sbf 2>&1 | tee -a "$LOG_FILE"; then
+                    if cargo build 2>&1 | tee -a "$LOG_FILE"; then
                         log_with_timestamp "✅ Build successful"
                     else
                         log_with_timestamp "❌ Build failed for $contract_name" "error"
@@ -673,3 +632,88 @@ EOF
         } 2>&1
     fi
 done
+then
+    log_with_timestamp "❌ inotifywait failed, using fallback polling mechanism" "error"
+    mkdir -p /app/processed
+    while true; do
+        echo "Polling directory $watch_dir..."
+        for file in "$watch_dir"/*.rs; do
+            if [[ -f "$file" && ! -f "/app/processed/$(basename $file)" ]]; then
+                filename=$(basename "$file")
+                {
+                    start_time=$(date +%s)
+                    log_with_timestamp "🆕 Processing new Rust contract: $filename"
+                    
+                    contract_name="${filename%.rs}"
+                    mkdir -p "$project_dir/src"
+                    cp "$file" "$project_dir/src/lib.rs"
+                    log_with_timestamp "📁 Contract copied to src/lib.rs"
+                    
+                    project_type=$(detect_project_type "$project_dir/src/lib.rs")
+                    log_with_timestamp "🔍 Detected project type: $project_type"
+                    
+                    create_dynamic_cargo_toml "$contract_name" "$project_dir/src/lib.rs" "$project_type"
+                    create_test_files "$contract_name" "$project_type"
+                    
+                    log_with_timestamp "🔨 Building $contract_name ($project_type)..."
+                    case $project_type in
+                        "anchor")
+                            cat > "$project_dir/Anchor.toml" <<EOF
+[features]
+seed = false
+skip-lint = false
+
+[programs.localnet]
+$contract_name = "target/deploy/${contract_name}.so"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "${SOLANA_URL:-https://api.devnet.solana.com}"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "cargo test-sbf"
+
+[test]
+startup_wait = 5000
+shutdown_wait = 2000
+upgrade_wait = 1000
+EOF
+                            
+                            if anchor build 2>&1 | tee -a "$LOG_FILE"; then
+                                log_with_timestamp "✅ Anchor build successful"
+                            else
+                                log_with_timestamp "❌ Anchor build failed, trying cargo build..." "error"
+                                if cargo build 2>&1 | tee -a "$LOG_FILE"; then
+                                    log_with_timestamp "✅ Cargo build successful"
+                                else
+                                    log_with_timestamp "❌ All builds failed for $contract_name" "error"
+                                    continue
+                                fi
+                            fi
+                            ;;
+                        *)
+                            if cargo build 2>&1 | tee -a "$LOG_FILE"; then
+                                log_with_timestamp "✅ Build successful"
+                            else
+                                log_with_timestamp "❌ Build failed for $contract_name" "error"
+                                continue
+                            fi
+                            ;;
+                    esac
+                    run_tests_with_coverage "$contract_name"
+                    run_security_audit "$contract_name"
+                    run_performance_analysis "$contract_name"
+                    end_time=$(date +%s)
+                    generate_comprehensive_report "$contract_name" "$project_type" "$start_time" "$end_time"
+                    log_with_timestamp "🏁 Completed processing $filename"
+                    log_with_timestamp "=========================================="
+                    touch "/app/processed/$filename"
+                } 2>&1
+            fi
+        done
+        sleep 5
+    done
+fi
