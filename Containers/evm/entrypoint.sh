@@ -356,3 +356,9 @@ EOF
     } 2>&1
   fi
 done
+
+if command -v node > /dev/null 2>&1; then
+  node /app/scripts/aggregate-all-logs.js
+else
+  log_with_timestamp "⚠️ Node.js is not installed; skipping log aggregation"
+fi
