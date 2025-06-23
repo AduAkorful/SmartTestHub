@@ -1,100 +1,97 @@
 const fs = require('fs');
 const path = require('path');
 
-// Directories to scan
-const DIRS = {
-  summary: 'logs/reports',
-  foundry: 'logs/foundry',
-  slither: 'logs/slither',
-  analysis: 'logs/reports',
-  size: 'logs/reports',
-  evm: 'logs',
-  coverage: 'logs/coverage'
-};
+const reportsDir = '/app/logs/reports';
+const summaryPrefix = 'test-summary-';
+const outputFile = path.join(reportsDir, 'complete-contracts-report.md');
 
-// Utility: Get latest file in a dir matching a pattern
-function getLatestFile(dir, pattern) {
-  if (!fs.existsSync(dir)) return null;
-  const files = fs.readdirSync(dir)
-    .filter(f => f.match(pattern))
-    .map(f => ({file: f, time: fs.statSync(path.join(dir, f)).mtime.getTime()}))
-    .sort((a, b) => b.time - a.time);
-  return files.length > 0 ? path.join(dir, files[0].file) : null;
-}
+const summaries = fs.readdirSync(reportsDir)
+  .filter(f => f.startsWith(summaryPrefix) && f.endsWith('.md'));
 
-// Utility: Read file or return message
-function safeRead(file) {
-  try {
-    return fs.readFileSync(file, 'utf8');
-  } catch (err) {
-    return `Could not read ${file}: ${err.message}`;
+let output = `# Complete Smart Contract Testing & Analysis Report\n\nGenerated: ${new Date().toISOString()}\n\n`;
+
+for (const file of summaries) {
+  const fullPath = path.join(reportsDir, file);
+  const content = fs.readFileSync(fullPath, 'utf-8');
+  const contractName = file.replace(summaryPrefix, '').replace('.md', '');
+
+  // --- Contract Information
+  const info = content.match(/## Contract Information[\s\S]*?(?=\n## |\n# |$)/);
+  output += `## Contract: ${contractName}\n\n`;
+  if (info) output += `### Contract Information\n${info[0].replace('## Contract Information','').trim()}\n\n`;
+
+  // --- Compilation result
+  const compilation = content.match(/- \*\*Compilation\*\*: (.*)/);
+  output += `### Compilation Result\n`;
+  if (compilation) output += `${compilation[1].trim()}\n\n`;
+
+  // --- Test results (extract each test's result line)
+  output += `### Foundry Test Results\n`;
+  const foundryTestBlock = content.match(/Ran [\s\S]+?(?=Wrote LCOV|$)/);
+  if (foundryTestBlock) {
+    // Show only PASS/FAIL lines and suite summary
+    const lines = foundryTestBlock[0].split('\n')
+      .filter(line => line.match(/^\[(PASS|FAIL)\]/) || line.match(/Suite result:/) || line.match(/tests? passed|tests? failed/));
+    if (lines.length > 0) output += lines.join('\n') + '\n\n';
+    else output += '_No test results found._\n\n';
+  } else {
+    output += '_No test results found._\n\n';
   }
+
+  // --- Security Analysis (extract Slither findings, not just pass/fail)
+  output += `### Security Analysis (Slither)\n`;
+  const slitherReportFile = path.join('/app/logs/slither', `${contractName}-report.txt`);
+  if (fs.existsSync(slitherReportFile)) {
+    const slitherLines = fs.readFileSync(slitherReportFile, 'utf-8')
+      .split('\n')
+      .filter(line =>
+        line.match(/INFO:Detectors:/) ||
+        line.match(/should be constant/) ||
+        line.match(/should be immutable/) ||
+        line.match(/too many digits/) ||
+        line.match(/contains known severe issues/) ||
+        line.match(/Reference:/)
+      );
+    if (slitherLines.length > 0) {
+      output += slitherLines.join('\n') + '\n\n';
+    } else {
+      output += '_No actionable Slither findings._\n\n';
+    }
+  } else {
+    output += '_No Slither report found._\n\n';
+  }
+
+  // --- Simple Security Checks (actionable)
+  output += `### Simple Security Checks\n`;
+  const highlights = content.match(/Simple Security Checks:[\s\S]*?(?=\n\n|\n# |$)/);
+  if (highlights) {
+    // Show only the checks with ⚠️ or ❌
+    const lines = highlights[0].split('\n').filter(line =>
+      line.includes('⚠️') || line.includes('❌') || line.includes('avoid')
+    );
+    if (lines.length > 0) output += lines.join('\n') + '\n\n';
+    else output += '_No critical issues detected._\n\n';
+  } else {
+    output += '_No security check summary found._\n\n';
+  }
+
+  // --- Contract Size (warn if near or over EIP-170)
+  output += `### Contract Size\n`;
+  const sizeFile = path.join(reportsDir, `${contractName}-size.txt`);
+  if (fs.existsSync(sizeFile)) {
+    const sizeText = fs.readFileSync(sizeFile, 'utf-8');
+    const statusLine = sizeText.split('\n').find(l => l.includes('Status:'));
+    if (statusLine && statusLine.includes('Exceeds')) {
+      output += `**Warning:** Contract size exceeds EIP-170 limit!\n${sizeText}\n\n`;
+    } else {
+      output += sizeText + '\n\n';
+    }
+  } else {
+    output += '_No contract size information._\n\n';
+  }
+
+  output += `---\n\n`;
 }
 
-// Find all contracts with summary files
-const summaries = fs.existsSync(DIRS.summary)
-  ? fs.readdirSync(DIRS.summary).filter(f => f.startsWith('test-summary-') && f.endsWith('.md'))
-  : [];
-
-let report = `# Complete Smart Contract Testing & Analysis Report\n\n`;
-report += `Generated: ${new Date().toISOString()}\n\n`;
-
-if (summaries.length === 0) {
-  report += '_No contract summaries found._\n';
-} else {
-  summaries.forEach(summaryFile => {
-    const contractName = summaryFile.replace('test-summary-', '').replace('.md', '');
-    report += `## Contract: ${contractName}\n\n`;
-
-    // Add summary
-    const summaryPath = path.join(DIRS.summary, summaryFile);
-    report += `### Summary\n`;
-    report += safeRead(summaryPath) + '\n\n';
-
-    // Foundry Test Output
-    const foundryJson = getLatestFile(DIRS.foundry, new RegExp(`${contractName}.*\\.json$`)) ||
-                        getLatestFile(DIRS.foundry, /\.json$/); // fallback
-    if (foundryJson) {
-      report += `### Foundry Test Output\n\`\`\`json\n${safeRead(foundryJson)}\n\`\`\`\n\n`;
-    }
-
-    // Coverage
-    const coverageFile = getLatestFile(DIRS.coverage, new RegExp(`${contractName}.*\\.info$`)) ||
-                         getLatestFile(DIRS.coverage, /\.info$/);
-    if (coverageFile) {
-      report += `### Coverage Report (LCOV)\n\`\`\`text\n${safeRead(coverageFile)}\n\`\`\`\n\n`;
-    }
-
-    // Slither
-    const slitherReport = getLatestFile(DIRS.slither, new RegExp(`${contractName}.*\\.txt$`)) ||
-                          getLatestFile(DIRS.slither, /\.txt$/);
-    if (slitherReport) {
-      report += `### Security Analysis (Slither)\n\`\`\`text\n${safeRead(slitherReport)}\n\`\`\`\n\n`;
-    }
-
-    // Custom Analysis
-    const analysisFile = getLatestFile(DIRS.analysis, new RegExp(`${contractName}-analysis\\.txt$`));
-    if (analysisFile) {
-      report += `### Custom Contract Analysis\n\`\`\`text\n${safeRead(analysisFile)}\n\`\`\`\n\n`;
-    }
-
-    // Size Analysis
-    const sizeFile = getLatestFile(DIRS.size, new RegExp(`${contractName}-size\\.txt$`));
-    if (sizeFile) {
-      report += `### Contract Size Analysis\n\`\`\`text\n${safeRead(sizeFile)}\n\`\`\`\n\n`;
-    }
-
-    // EVM process log (general / not per-contract)
-    const evmLog = getLatestFile(DIRS.evm, /^evm-test\.log$/);
-    if (evmLog) {
-      report += `### Full EVM Process Log\n\`\`\`text\n${safeRead(evmLog)}\n\`\`\`\n\n`;
-    }
-
-    report += `---\n\n`;
-  });
-}
-
-// Write the aggregated report
-const outFile = 'logs/reports/complete-contracts-report.md';
-fs.writeFileSync(outFile, report);
-console.log(`Aggregated report written to ${outFile}`);
+fs.writeFileSync(outputFile, output);
+console.log(`Aggregated report written to ${outputFile}`);
