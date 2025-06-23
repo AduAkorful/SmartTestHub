@@ -352,14 +352,9 @@ EOF
       log_with_timestamp "📋 Test summary created: logs/reports/test-summary-${contract_name}.md"
       log_with_timestamp "🏁 All EVM analysis complete for $filename"
       log_with_timestamp "==========================================\n"
-      
+
+      node /app/scripts/aggregate-all-logs.js | tee -a "$LOG_FILE"
+
     } 2>&1
   fi
 done
-
-# Aggregate logs into a single comprehensive report after all contracts are processed
-if command -v node > /dev/null 2>&1; then
-  node /app/scripts/aggregate-all-logs.js | tee -a "$LOG_FILE"
-else
-  log_with_timestamp "⚠️ Node.js is not installed; skipping log aggregation"
-fi
