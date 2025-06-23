@@ -4,6 +4,7 @@ FROM rust:1.85-slim
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/opt/venv/bin:/root/.cargo/bin:/root/.local/share/solana/install/active_release/bin:/root/.avm/bin:${PATH}"
 ENV SOLANA_INSTALL_DIR="/root/.local/share/solana/install"
+# Disable X-Ray by default to prevent container restart loops
 ENV AWS_XRAY_SDK_ENABLED=false
 ENV AWS_REGION=us-east-1
 ENV RUST_LOG=debug
