@@ -23,10 +23,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Install AWS X-Ray SDK in virtual environment
 RUN pip install aws-xray-sdk
 
-# ---- Install Real Solana CLI ----
-RUN sh -c "$(curl -sSfL https://release.solana.com/v1.17.3/install)" && \
-    echo "export PATH=\"/root/.local/share/solana/install/active_release/bin:\$PATH\"" >> /root/.bashrc && \
-    echo "export PATH=\"/root/.local/share/solana/install/active_release/bin:\$PATH\"" >> /root/.profile
+# ---- Install Real Solana CLI (latest recommended from docs) ----
+RUN sh -c "$(curl -sSfL https://release.solana.com/v1.18.14/install)"
+ENV PATH="/root/.local/share/solana/install/active_release/bin:$PATH"
 
 # Install AVM and Anchor if possible
 RUN cargo install --git https://github.com/coral-xyz/anchor avm --locked --force || echo "AVM installation failed"
@@ -34,6 +33,9 @@ RUN cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
 # Install Rust tools including cargo-tarpaulin for test coverage
 RUN rustup component add clippy && \
     cargo install cargo-audit cargo-expand cargo-tarpaulin || true
+
+# Verify Solana CLI installation at build time
+RUN solana --version
 
 # Create workdir and directory structure
 WORKDIR /app
