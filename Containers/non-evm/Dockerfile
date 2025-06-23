@@ -4,7 +4,6 @@ FROM rust:1.85-slim
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/opt/venv/bin:/root/.cargo/bin:/root/.local/share/solana/install/active_release/bin:/root/.avm/bin:${PATH}"
 ENV SOLANA_INSTALL_DIR="/root/.local/share/solana/install"
-# Disable X-Ray by default to prevent container restart loops
 ENV AWS_XRAY_SDK_ENABLED=false
 ENV AWS_REGION=us-east-1
 ENV RUST_LOG=debug
@@ -23,12 +22,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Install AWS X-Ray SDK in virtual environment
 RUN pip install aws-xray-sdk
 
-# Skip Solana CLI installation attempts and just create dummy scripts
-RUN mkdir -p /root/.local/share/solana/install/active_release/bin && \
-    echo '#!/bin/bash\necho "Solana CLI stub (real CLI not available)"\necho "Version: stub-1.17.3"' > /root/.local/share/solana/install/active_release/bin/solana && \
-    chmod +x /root/.local/share/solana/install/active_release/bin/solana && \
-    echo '#!/bin/bash\necho "Solana keygen stub"' > /root/.local/share/solana/install/active_release/bin/solana-keygen && \
-    chmod +x /root/.local/share/solana/install/active_release/bin/solana-keygen && \
+# ---- Install Real Solana CLI ----
+RUN sh -c "$(curl -sSfL https://release.solana.com/v1.17.3/install)" && \
     echo "export PATH=\"/root/.local/share/solana/install/active_release/bin:\$PATH\"" >> /root/.bashrc && \
     echo "export PATH=\"/root/.local/share/solana/install/active_release/bin:\$PATH\"" >> /root/.profile
 
