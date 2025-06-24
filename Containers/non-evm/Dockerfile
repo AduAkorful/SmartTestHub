@@ -27,15 +27,15 @@ RUN pip install aws-xray-sdk
 RUN sh -c "$(curl -sSfL https://release.solana.com/v1.18.14/install)"
 ENV PATH="/root/.local/share/solana/install/active_release/bin:$PATH"
 
+# Verify Solana CLI installation at build time (fix PATH for this RUN)
+RUN export PATH="/root/.local/share/solana/install/active_release/bin:$PATH" && solana --version
+
 # Install AVM and Anchor if possible
 RUN cargo install --git https://github.com/coral-xyz/anchor avm --locked --force || echo "AVM installation failed"
 
 # Install Rust tools including cargo-tarpaulin for test coverage
 RUN rustup component add clippy && \
     cargo install cargo-audit cargo-expand cargo-tarpaulin || true
-
-# Verify Solana CLI installation at build time
-RUN solana --version
 
 # Create workdir and directory structure
 WORKDIR /app
