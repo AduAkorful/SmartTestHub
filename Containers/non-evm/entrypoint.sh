@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Ensure this script is executable (extra safety for bind-mount edge cases)
+chmod +x "$0" || true
+
 # Enhanced entrypoint script for Non-EVM (Solana) container
 # Provides comprehensive testing, security analysis, and reporting
 
@@ -31,7 +34,6 @@ log_with_timestamp() {
     local message="$1"
     local log_type="${2:-info}"
     local timestamp="[$(date '+%Y-%m-%d %H:%M:%S')]"
-    
     case $log_type in
         "error")
             echo "$timestamp ❌ $message" | tee -a "$LOG_FILE" "$ERROR_LOG"
@@ -59,26 +61,18 @@ command_exists() {
 # Function to start X-Ray daemon if installed
 start_xray_daemon() {
     log_with_timestamp "📡 Setting up AWS X-Ray daemon..." "xray"
-    
     command -v xray > /dev/null 2>&1
     if [ $? -eq 0 ]; then
         log_with_timestamp "📡 Found X-Ray daemon at $(which xray)" "xray"
-        
-        # Set AWS region manually for local development
         export AWS_REGION="us-east-1"
         log_with_timestamp "📡 Setting AWS_REGION to $AWS_REGION" "xray"
-        
         if [ -f "/app/config/xray-config.json" ]; then
             log_with_timestamp "📡 Starting X-Ray daemon with custom config in local mode..." "xray"
-            # Explicitly run in local mode
             nohup xray -c /app/config/xray-config.json -l -o > "$XRAY_LOG" 2>&1 &
         else
             log_with_timestamp "📡 Starting X-Ray daemon with default config in local mode..." "xray"
-            # Explicitly run in local mode
             nohup xray -l -o > "$XRAY_LOG" 2>&1 &
         fi
-        
-        # Check if daemon started properly
         sleep 2
         if pgrep xray > /dev/null; then
             log_with_timestamp "✅ X-Ray daemon started successfully" "xray"
@@ -97,25 +91,18 @@ generate_tarpaulin_config() {
         log_with_timestamp "📊 Generating tarpaulin.toml configuration file..."
         cat > "/app/tarpaulin.toml" <<EOF
 [all]
-# Basic configuration
 timeout = 300
 debug = false
 follow-exec = true
 verbose = true
 workspace = true
-
-# Coverage options
 out = ["Html", "Xml"]
 output-dir = "/app/logs/coverage"
-
-# Test selection
 exclude-files = [
     "tests/*",
     "*/build/*", 
     "*/dist/*"
 ]
-
-# Ignore test failures
 ignore-tests = true
 EOF
         log_with_timestamp "✅ Created tarpaulin.toml"
@@ -125,17 +112,11 @@ EOF
 # Function to setup Solana environment
 setup_solana_environment() {
     log_with_timestamp "🔧 Setting up Solana environment..."
-    
-    # Check the PATH explicitly
     log_with_timestamp "Current PATH: $PATH"
-    
-    # Check if solana is in the PATH
     if ! command_exists solana; then
         log_with_timestamp "❌ Solana CLI not found in PATH. Please rebuild the Docker image to include the Solana CLI." "error"
         return 1
     fi
-    
-    # Generate keypair if it doesn't exist
     if [ ! -f ~/.config/solana/id.json ]; then
         log_with_timestamp "🔑 Generating new Solana keypair..."
         mkdir -p ~/.config/solana
@@ -146,8 +127,6 @@ setup_solana_environment() {
             return 1
         fi
     fi
-    
-    # Set Solana configuration
     local solana_url="${SOLANA_URL:-https://api.devnet.solana.com}"
     if solana config set --url "$solana_url" --keypair ~/.config/solana/id.json; then
         log_with_timestamp "✅ Solana config set successfully"
@@ -155,8 +134,6 @@ setup_solana_environment() {
         log_with_timestamp "❌ Failed to set Solana config" "error"
         return 1
     fi
-    
-    # Verify Solana setup
     if solana config get >/dev/null 2>&1; then
         log_with_timestamp "✅ Solana CLI configured successfully"
         solana config get | while read -r line; do
@@ -166,20 +143,16 @@ setup_solana_environment() {
         log_with_timestamp "❌ Failed to configure Solana CLI" "error"
         return 1
     fi
-    
-    # Request airdrop for devnet testing
     if [[ "$solana_url" == *"devnet"* ]]; then
         log_with_timestamp "💰 Requesting SOL airdrop for testing..."
         solana airdrop 2 >/dev/null 2>&1 || log_with_timestamp "⚠️ Airdrop failed (might be rate limited)"
     fi
-
     return 0
 }
 
 # Function to detect project type
 detect_project_type() {
     local file_path="$1"
-    
     if grep -q "#\[program\]" "$file_path" || grep -q "use anchor_lang::prelude" "$file_path"; then
         echo "anchor"
     elif grep -q "entrypoint\!" "$file_path" || grep -q "solana_program::entrypoint\!" "$file_path"; then
@@ -194,10 +167,7 @@ create_dynamic_cargo_toml() {
     local contract_name="$1"
     local source_path="$2"
     local project_type="$3"
-    
     log_with_timestamp "📝 Creating dynamic Cargo.toml for $contract_name ($project_type)..."
-    
-    # Create basic Cargo.toml structure
     cat > "$project_dir/Cargo.toml" <<EOF
 [package]
 name = "$contract_name"
@@ -208,8 +178,6 @@ description = "Smart contract automatically processed by SmartTestHub"
 [lib]
 crate-type = ["cdylib", "lib"]
 EOF
-
-    # Add dependencies based on project type
     case $project_type in
         "anchor")
             cat >> "$project_dir/Cargo.toml" <<EOF
@@ -233,7 +201,6 @@ num-derive = "0.4"
 EOF
             ;;
         *)
-            # Unknown project type, use generic dependencies
             cat >> "$project_dir/Cargo.toml" <<EOF
 
 [dependencies]
@@ -243,8 +210,6 @@ borsh-derive = "0.10.3"
 EOF
             ;;
     esac
-    
-    # Add dev-dependencies and features
     cat >> "$project_dir/Cargo.toml" <<EOF
 
 [dev-dependencies]
@@ -260,7 +225,6 @@ overflow-checks = true
 lto = "fat"
 codegen-units = 1
 EOF
-
     log_with_timestamp "✅ Created dynamic Cargo.toml"
 }
 
@@ -268,13 +232,8 @@ EOF
 create_test_files() {
     local contract_name="$1"
     local project_type="$2"
-    
     log_with_timestamp "🧪 Creating test files for $contract_name ($project_type)..."
-    
-    # Create tests directory if it doesn't exist
     mkdir -p "$project_dir/tests"
-    
-    # Create test file based on project type
     case $project_type in
         "anchor")
             cat > "$project_dir/tests/test_${contract_name}.rs" <<EOF
@@ -282,24 +241,17 @@ use anchor_lang::prelude::*;
 use solana_program_test::*;
 use solana_sdk::{signature::{Keypair, Signer}, transaction::Transaction};
 
-// Import the program to test
 use ${contract_name}::*;
 
 #[tokio::test]
 async fn test_${contract_name}_initialization() {
-    // Setup the test environment
     let program_id = Pubkey::new_unique();
     let mut program_test = ProgramTest::new(
         "${contract_name}",
         program_id,
         processor!(process_instruction),
     );
-
-    // Start the test environment
     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
-
-    // Create test logic here
-    // This is a placeholder test that will always pass
     assert!(true);
 }
 EOF
@@ -315,65 +267,46 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use std::str::FromStr;
-
-// Import the program to test
 use ${contract_name}::*;
 
 #[tokio::test]
 async fn test_${contract_name}_basic() {
-    // Setup the test environment
     let program_id = Pubkey::new_unique();
     let mut program_test = ProgramTest::new(
         "${contract_name}",
         program_id,
         processor!(process_instruction),
     );
-
-    // Start the test environment
     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
-
-    // Create test logic here
-    // This is a placeholder test that will always pass
     assert!(true);
 }
 EOF
             ;;
         *)
-            # Generic test for unknown project type
             cat > "$project_dir/tests/test_${contract_name}.rs" <<EOF
 use solana_program_test::*;
 use solana_sdk::signature::{Keypair, Signer};
 
 #[tokio::test]
 async fn test_${contract_name}_placeholder() {
-    // This is a generic test placeholder
-    // Actual tests would be implemented based on the specific contract functionality
     assert!(true, "Placeholder test passed");
 }
 EOF
             ;;
     esac
-    
     log_with_timestamp "✅ Created test files"
 }
 
 # Function to run tests with coverage
 run_tests_with_coverage() {
     local contract_name="$1"
-    
     log_with_timestamp "🧪 Running tests with coverage for $contract_name..."
-    
-    # Create coverage directory
     mkdir -p "/app/logs/coverage"
-    
-    # Run tests with tarpaulin
     if cargo tarpaulin --config /app/tarpaulin.toml -v; then
         log_with_timestamp "✅ Tests and coverage completed successfully"
     else
         log_with_timestamp "⚠️ Tests or coverage generation had some issues" "error"
     fi
-    
-    # Check if coverage reports were generated
     if [ -f "/app/logs/coverage/tarpaulin-report.html" ]; then
         log_with_timestamp "📊 Coverage report generated: /app/logs/coverage/tarpaulin-report.html"
     else
@@ -384,22 +317,14 @@ run_tests_with_coverage() {
 # Function to run security audit
 run_security_audit() {
     local contract_name="$1"
-    
     log_with_timestamp "🛡️ Running security audit for $contract_name..." "security"
-    # Generate Cargo.lock first
     cargo generate-lockfile || true
-    
-    # Create security directory
     mkdir -p "/app/logs/security"
-    
-    # Run cargo audit
     if cargo audit -f /app/Cargo.lock > "/app/logs/security/cargo-audit.log" 2>&1; then
         log_with_timestamp "✅ Cargo audit completed successfully" "security"
     else
         log_with_timestamp "⚠️ Cargo audit found potential vulnerabilities" "security"
     fi
-    
-    # Run clippy for code quality checks
     if cargo clippy --all-targets --all-features -- -D warnings > "/app/logs/security/clippy.log" 2>&1; then
         log_with_timestamp "✅ Clippy checks passed" "security"
     else
@@ -410,15 +335,9 @@ run_security_audit() {
 # Function to run performance analysis
 run_performance_analysis() {
     local contract_name="$1"
-    
     log_with_timestamp "⚡ Running performance analysis for $contract_name..." "performance"
-    
-    # Create benchmarks directory
     mkdir -p "/app/logs/benchmarks"
-    
-    # Run simple build time measurement as a basic performance metric
     log_with_timestamp "Measuring build time performance..." "performance"
-    
     local start_time=$(date +%s)
     if cargo build --release > "/app/logs/benchmarks/build-time.log" 2>&1; then
         local end_time=$(date +%s)
@@ -427,8 +346,6 @@ run_performance_analysis() {
     else
         log_with_timestamp "❌ Release build failed" "performance"
     fi
-    
-    # Check program size
     if [ -f "/app/target/release/${contract_name}.so" ]; then
         local program_size=$(du -h "/app/target/release/${contract_name}.so" | cut -f1)
         log_with_timestamp "📊 Program size: $program_size" "performance"
@@ -442,15 +359,9 @@ generate_comprehensive_report() {
     local start_time="$3"
     local end_time="$4"
     local processing_time=$((end_time - start_time))
-    
     log_with_timestamp "📝 Generating comprehensive report for $contract_name..."
-    
-    # Create report directory
     mkdir -p "/app/logs/reports"
-    
-    # Create the report
     local report_file="/app/logs/reports/${contract_name}_report.md"
-    
     cat > "$report_file" <<EOF
 # Comprehensive Analysis Report for $contract_name
 
@@ -466,16 +377,12 @@ generate_comprehensive_report() {
 
 ## Test Results
 EOF
-
-    # Add test results to report
     if [ -f "/app/logs/coverage/tarpaulin-report.html" ]; then
         echo "- ✅ Tests executed successfully" >> "$report_file"
         echo "- 📊 Coverage report available at \`/app/logs/coverage/tarpaulin-report.html\`" >> "$report_file"
     else
         echo "- ⚠️ Test coverage report not available" >> "$report_file"
     fi
-
-    # Add security audit results
     echo -e "\n## Security Analysis" >> "$report_file"
     if [ -f "/app/logs/security/cargo-audit.log" ]; then
         echo "- 🛡️ Security audit completed" >> "$report_file"
@@ -483,8 +390,6 @@ EOF
     else
         echo "- ⚠️ Security audit report not available" >> "$report_file"
     fi
-
-    # Add performance analysis
     echo -e "\n## Performance Analysis" >> "$report_file"
     if [ -f "/app/logs/benchmarks/build-time.log" ]; then
         echo "- ⚡ Performance analysis completed" >> "$report_file"
@@ -495,13 +400,10 @@ EOF
     else
         echo "- ⚠️ Performance analysis not available" >> "$report_file"
     fi
-
-    # Add recommendations section
     echo -e "\n## Recommendations" >> "$report_file"
     echo "- Ensure comprehensive test coverage for all program paths" >> "$report_file"
     echo "- Address any security concerns highlighted in the audit report" >> "$report_file"
     echo "- Consider optimizing program size and execution time if required" >> "$report_file"
-
     log_with_timestamp "✅ Comprehensive report generated at $report_file"
 }
 
@@ -527,11 +429,8 @@ log_with_timestamp "🔧 Environment: ${RUST_LOG:-info} log level"
 # Setup Solana environment
 setup_solana_environment || {
     log_with_timestamp "❌ Failed to setup Solana environment" "error"
-    # Instead of exiting which would stop the container, we'll keep it running but log the error
-    # This allows us to inspect the container for debugging
 }
 
-# Ensure watch directory exists
 mkdir -p "$watch_dir"
 
 echo "Setting up directory watch on $watch_dir..."
@@ -541,32 +440,17 @@ while read -r directory events filename; do
         {
             start_time=$(date +%s)
             log_with_timestamp "🆕 Processing new Rust contract: $filename"
-            
-            # Extract contract name
             contract_name="${filename%.rs}"
-            
-            # Create source directory
             mkdir -p "$project_dir/src"
-            
-            # Copy contract file
             cp "$watch_dir/$filename" "$project_dir/src/lib.rs"
             log_with_timestamp "📁 Contract copied to src/lib.rs"
-            
-            # Detect project type
             project_type=$(detect_project_type "$project_dir/src/lib.rs")
             log_with_timestamp "🔍 Detected project type: $project_type"
-            
-            # Create dynamic Cargo.toml
             create_dynamic_cargo_toml "$contract_name" "$project_dir/src/lib.rs" "$project_type"
-            
-            # Create test files
             create_test_files "$contract_name" "$project_type"
-            
-            # Build the project
             log_with_timestamp "🔨 Building $contract_name ($project_type)..."
             case $project_type in
                 "anchor")
-                    # Create/update Anchor.toml
                     cat > "$project_dir/Anchor.toml" <<EOF
 [features]
 seed = false
@@ -590,7 +474,6 @@ startup_wait = 5000
 shutdown_wait = 2000
 upgrade_wait = 1000
 EOF
-                    
                     if anchor build 2>&1 | tee -a "$LOG_FILE"; then
                         log_with_timestamp "✅ Anchor build successful"
                     else
@@ -612,23 +495,13 @@ EOF
                     fi
                     ;;
             esac
-            
-            # Run tests with coverage
             run_tests_with_coverage "$contract_name"
-            
-            # Run security audit
             run_security_audit "$contract_name"
-            
-            # Run performance analysis
             run_performance_analysis "$contract_name"
-            
-            # Generate comprehensive report
             end_time=$(date +%s)
             generate_comprehensive_report "$contract_name" "$project_type" "$start_time" "$end_time"
-            
             log_with_timestamp "🏁 Completed processing $filename"
             log_with_timestamp "=========================================="
-            
         } 2>&1
     fi
 done
@@ -643,18 +516,14 @@ then
                 {
                     start_time=$(date +%s)
                     log_with_timestamp "🆕 Processing new Rust contract: $filename"
-                    
                     contract_name="${filename%.rs}"
                     mkdir -p "$project_dir/src"
                     cp "$file" "$project_dir/src/lib.rs"
                     log_with_timestamp "📁 Contract copied to src/lib.rs"
-                    
                     project_type=$(detect_project_type "$project_dir/src/lib.rs")
                     log_with_timestamp "🔍 Detected project type: $project_type"
-                    
                     create_dynamic_cargo_toml "$contract_name" "$project_dir/src/lib.rs" "$project_type"
                     create_test_files "$contract_name" "$project_type"
-                    
                     log_with_timestamp "🔨 Building $contract_name ($project_type)..."
                     case $project_type in
                         "anchor")
@@ -681,7 +550,6 @@ startup_wait = 5000
 shutdown_wait = 2000
 upgrade_wait = 1000
 EOF
-                            
                             if anchor build 2>&1 | tee -a "$LOG_FILE"; then
                                 log_with_timestamp "✅ Anchor build successful"
                             else
