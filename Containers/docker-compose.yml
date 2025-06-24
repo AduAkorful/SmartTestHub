@@ -33,14 +33,6 @@ services:
     volumes:
       - shared_input:/app/input
       - shared_logs_non_evm:/app/logs
-      - ./non-evm/entrypoint.sh:/app/entrypoint.sh
-      - ./non-evm/entrypoint-patch.sh:/app/entrypoint-patch.sh
-    command: >
-      bash -c "
-        chmod +x /app/entrypoint-patch.sh &&
-        /app/entrypoint-patch.sh &&
-        /app/entrypoint-wrapper.sh
-      "
     tty: true
     stdin_open: true
     restart: unless-stopped
