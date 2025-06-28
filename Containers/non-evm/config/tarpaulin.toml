@@ -1,8 +1,5 @@
 [settings]
-# Coverage types to run
 run_types = ["Tests", "Doctests"]
-
-# Directories to ignore
 ignore = [
     "tests/*",
     "examples/*",
@@ -11,22 +8,14 @@ ignore = [
     "*/tests/*",
     "*/examples/*"
 ]
-
-# Files to exclude from coverage
 exclude = [
     "*/mod.rs",
     "*/main.rs",
     "*/bin/*"
 ]
-
-# Output settings
 output_dir = "logs/coverage"
 target_dir = "target/tarpaulin"
-
-# Timeout as a duration string (fixes config error)
 timeout = "120s"
-
-# Exclude lines containing these patterns
 exclude_lines = [
     "#\\[cfg\\(test\\)\\]",
     "unreachable!",
@@ -37,11 +26,7 @@ exclude_lines = [
     "#\\[derive\\(",
     "Err\\(.*\\) => panic!",
 ]
-
-# Output formats
 out = ["Html", "Json", "Xml", "Lcov"]
-
-# Additional options
 no_fail_fast = true
 skip_clean = false
 all_features = true
@@ -55,7 +40,7 @@ locked = false
 offline = false
 avoid_cfg_tarpaulin = false
 implicit_test_threads = false
-fail_under = 70.0  # Minimum coverage percentage
+fail_under = 70.0
 branch = true
 count = true
 line = true
