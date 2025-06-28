@@ -23,8 +23,8 @@ exclude = [
 output_dir = "logs/coverage"
 target_dir = "target/tarpaulin"
 
-# Timeout in seconds
-timeout = 120
+# Timeout as a duration string (fixes config error)
+timeout = "120s"
 
 # Exclude lines containing these patterns
 exclude_lines = [
