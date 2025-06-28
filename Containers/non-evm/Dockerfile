@@ -1,29 +1,28 @@
 FROM solanalabs/solana:v1.18.14
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip python3-venv git nodejs npm dos2unix jq \
-    pkg-config build-essential libssl-dev libudev-dev llvm clang libclang-dev cmake unzip inotify-tools \
+    python3 python3-pip python3-venv git curl dos2unix jq \
+    nodejs npm pkg-config build-essential libssl-dev libudev-dev llvm clang libclang-dev cmake unzip inotify-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # Set up Python virtual environment for AWS X-Ray SDK
 RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+ENV PATH="/opt/venv/bin:/root/.cargo/bin:$PATH"
 
 RUN pip install aws-xray-sdk
 
-# ====== FIX: Install Rust via rustup, and ensure Cargo is in the PATH ======
+# Install Rust toolchain (official method)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+# Add cargo and rustup to PATH for all users and future RUN/ENTRYPOINT
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# ====== Install Anchor CLI globally (for anchor build) ======
-RUN npm install -g @coral-xyz/anchor-cli
-
-# Install AVM (optional, AVM is not strictly required for anchor build)
-RUN cargo install --git https://github.com/coral-xyz/anchor avm --locked --force || echo "AVM installation failed"
+# Install Anchor CLI via cargo (NOT npm, to avoid GLIBC mismatch)
+RUN cargo install --git https://github.com/coral-xyz/anchor --tag v0.29.0 anchor-cli --locked
 
 # Rust tools for linting and coverage
 RUN rustup component add clippy && \
-    cargo install cargo-audit cargo-expand cargo-tarpaulin || true
+    cargo install cargo-audit cargo-expand cargo-tarpaulin
 
 # Prepare directory structure
 WORKDIR /app
