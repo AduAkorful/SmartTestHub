@@ -91,7 +91,7 @@ generate_tarpaulin_config() {
         log_with_timestamp "📊 Generating tarpaulin.toml configuration file..."
         cat > "/app/tarpaulin.toml" <<EOF
 [all]
-timeout = 300
+timeout = "300s"
 debug = false
 follow-exec = true
 verbose = true
@@ -183,16 +183,16 @@ EOF
             cat >> "$project_dir/Cargo.toml" <<EOF
 
 [dependencies]
-anchor-lang = "0.29.0"
-anchor-spl = "0.29.0"
-solana-program = "1.17.0"
+anchor-lang = "0.31.1"
+anchor-spl = "0.31.1"
+solana-program = "2.3.0"
 EOF
             ;;
         "native")
             cat >> "$project_dir/Cargo.toml" <<EOF
 
 [dependencies]
-solana-program = "1.17.0"
+solana-program = "2.3.0"
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
 thiserror = "1.0"
@@ -204,7 +204,7 @@ EOF
             cat >> "$project_dir/Cargo.toml" <<EOF
 
 [dependencies]
-solana-program = "1.17.0"
+solana-program = "2.3.0"
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
 EOF
@@ -213,8 +213,8 @@ EOF
     cat >> "$project_dir/Cargo.toml" <<EOF
 
 [dev-dependencies]
-solana-program-test = "1.17.0"
-solana-sdk = "1.17.0"
+solana-program-test = "2.3.2"
+solana-sdk = "2.3.0"
 
 [features]
 no-entrypoint = []
@@ -302,16 +302,28 @@ run_tests_with_coverage() {
     local contract_name="$1"
     log_with_timestamp "🧪 Running tests with coverage for $contract_name..."
     mkdir -p "/app/logs/coverage"
-    if cargo tarpaulin --config /app/tarpaulin.toml -v; then
-        log_with_timestamp "✅ Tests and coverage completed successfully"
+    # --- BEGIN: ANCHOR TEST FIX ---
+    if [ -f "$project_dir/Anchor.toml" ]; then
+        log_with_timestamp "🧪 Detected Anchor project, running 'anchor test'..."
+        if anchor test | tee -a "$LOG_FILE"; then
+            log_with_timestamp "✅ Anchor tests completed successfully"
+        else
+            log_with_timestamp "⚠️ Anchor tests had some issues" "error"
+        fi
     else
-        log_with_timestamp "⚠️ Tests or coverage generation had some issues" "error"
+        # For non-Anchor projects, run tarpaulin as before
+        if cargo tarpaulin --config /app/tarpaulin.toml -v; then
+            log_with_timestamp "✅ Tests and coverage completed successfully"
+        else
+            log_with_timestamp "⚠️ Tests or coverage generation had some issues" "error"
+        fi
+        if [ -f "/app/logs/coverage/tarpaulin-report.html" ]; then
+            log_with_timestamp "📊 Coverage report generated: /app/logs/coverage/tarpaulin-report.html"
+        else
+            log_with_timestamp "❌ Failed to generate coverage report" "error"
+        fi
     fi
-    if [ -f "/app/logs/coverage/tarpaulin-report.html" ]; then
-        log_with_timestamp "📊 Coverage report generated: /app/logs/coverage/tarpaulin-report.html"
-    else
-        log_with_timestamp "❌ Failed to generate coverage report" "error"
-    fi
+    # --- END: ANCHOR TEST FIX ---
 }
 
 # Function to run security audit
