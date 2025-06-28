@@ -1,43 +1,40 @@
 FROM solanalabs/solana:v1.18.14
 
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv git curl dos2unix jq \
-    nodejs npm pkg-config build-essential libssl-dev libudev-dev llvm clang libclang-dev cmake unzip inotify-tools \
+    pkg-config build-essential libssl-dev libudev-dev llvm clang libclang-dev cmake unzip inotify-tools \
+    nodejs npm yarn \
     && rm -rf /var/lib/apt/lists/*
 
-# Set up Python virtual environment for AWS X-Ray SDK
+# Install Rust 1.85.0 (overrides Solana image's Rust)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.85.0
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install Solana CLI 2.1.15 (reinstall over existing if needed)
+RUN sh -c "$(curl -sSfL https://release.solana.com/v2.1.15/install)"
+ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
+
+# Install Anchor CLI 0.31.1
+RUN cargo install --git https://github.com/coral-xyz/anchor --tag v0.31.1 anchor-cli --locked
+
+# Install latest cargo-deny and other dev tools
+RUN cargo install cargo-deny && \
+    cargo install cargo-audit && \
+    cargo install cargo-expand && \
+    cargo install cargo-tarpaulin
+
+# Optional: Set up Python virtual environment for AWS X-Ray SDK
 RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:/root/.cargo/bin:$PATH"
+ENV PATH="/opt/venv/bin:${PATH}"
 
 RUN pip install aws-xray-sdk
 
-# Install Rust (rustup) and add to PATH
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-
-# Add cargo and rustup to PATH for all future RUN and ENTRYPOINT
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Install Anchor CLI via cargo (NOT npm, to avoid GLIBC mismatch)
-RUN cargo install --git https://github.com/coral-xyz/anchor --tag v0.29.0 anchor-cli --locked
-
-# Rust tools for linting and coverage
-RUN rustup component add clippy && \
-    cargo install cargo-audit cargo-expand cargo-tarpaulin
-
-# Prepare directory structure
+# Prepare your workspace (customize as needed)
 WORKDIR /app
-RUN mkdir -p /app/src /app/tests /app/config /app/input /app/logs \
-    /app/logs/coverage /app/logs/security /app/logs/analysis /app/logs/reports \
-    /app/logs/xray /app/target /app/.cargo
+COPY . /app
 
-# Copy your source, config, and test files
-COPY config /app/config
-COPY Cargo.toml /app/Cargo.toml
-COPY src /app/src
-COPY tests /app/tests
-
-# Only copy entrypoint.sh (single script now)
-COPY entrypoint.sh /app/entrypoint.sh
-RUN dos2unix /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+# Make entrypoint script executable if present
+RUN chmod +x /app/entrypoint.sh || true
 
 ENTRYPOINT ["/app/entrypoint.sh"]
