@@ -4,16 +4,12 @@ set -e
 # Ensure this script is executable (extra safety for bind-mount edge cases)
 chmod +x "$0" || true
 
-# Enhanced entrypoint script for Non-EVM (Solana) container
-# Provides comprehensive testing, security analysis, and reporting
-
 LOG_FILE="/app/logs/test.log"
 ERROR_LOG="/app/logs/error.log"
 SECURITY_LOG="/app/logs/security/security-audit.log"
 PERFORMANCE_LOG="/app/logs/analysis/performance.log"
 XRAY_LOG="/app/logs/xray/xray.log"
 
-# Create all required directories
 mkdir -p "$(dirname "$LOG_FILE")"
 mkdir -p "$(dirname "$ERROR_LOG")"
 mkdir -p "$(dirname "$SECURITY_LOG")"
@@ -23,13 +19,11 @@ mkdir -p /app/logs/coverage
 mkdir -p /app/logs/reports
 mkdir -p /app/logs/benchmarks
 
-# Load environment variables if .env exists
 if [ -f "/app/.env" ]; then
     export $(cat /app/.env | grep -v '^#' | xargs)
     echo "✅ Environment variables loaded from .env"
 fi
 
-# Function to log with timestamp to multiple files
 log_with_timestamp() {
     local message="$1"
     local log_type="${2:-info}"
@@ -53,12 +47,10 @@ log_with_timestamp() {
     esac
 }
 
-# Function to check if a command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Function to start X-Ray daemon if installed
 start_xray_daemon() {
     log_with_timestamp "📡 Setting up AWS X-Ray daemon..." "xray"
     command -v xray > /dev/null 2>&1
@@ -85,7 +77,6 @@ start_xray_daemon() {
     fi
 }
 
-# Function to generate tarpaulin.toml if needed
 generate_tarpaulin_config() {
     if [ ! -f "/app/tarpaulin.toml" ]; then
         log_with_timestamp "📊 Generating tarpaulin.toml configuration file..."
@@ -109,7 +100,6 @@ EOF
     fi
 }
 
-# Function to setup Solana environment
 setup_solana_environment() {
     log_with_timestamp "🔧 Setting up Solana environment..."
     log_with_timestamp "Current PATH: $PATH"
@@ -150,7 +140,6 @@ setup_solana_environment() {
     return 0
 }
 
-# Function to detect project type
 detect_project_type() {
     local file_path="$1"
     if grep -q "#\[program\]" "$file_path" || grep -q "use anchor_lang::prelude" "$file_path"; then
@@ -162,7 +151,6 @@ detect_project_type() {
     fi
 }
 
-# Function to create dynamic Cargo.toml (for Anchor, pins zeroize to compatible version)
 create_dynamic_cargo_toml() {
     local contract_name="$1"
     local source_path="$2"
@@ -185,40 +173,38 @@ EOF
 [dependencies]
 anchor-lang = "0.31.1"
 anchor-spl = "0.31.1"
-solana-program = "1.18.14"
-solana-sdk = "1.18.14"
-zeroize = "1.8.1"
+solana-program = "1.18.12"
+solana-sdk = "1.18.12"
 EOF
             ;;
         "native")
             cat >> "$project_dir/Cargo.toml" <<EOF
 
 [dependencies]
-solana-program = "1.18.14"
+solana-program = "1.18.12"
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
 thiserror = "1.0"
 num-traits = "0.2"
 num-derive = "0.4"
-zeroize = "1.8.1"
 EOF
             ;;
         *)
             cat >> "$project_dir/Cargo.toml" <<EOF
 
 [dependencies]
-solana-program = "1.18.14"
+solana-program = "1.18.12"
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
-zeroize = "1.8.1"
 EOF
             ;;
     esac
     cat >> "$project_dir/Cargo.toml" <<EOF
 
 [dev-dependencies]
-solana-program-test = "1.18.14"
-solana-sdk = "1.18.14"
+solana-program-test = "1.18.12"
+solana-banks-client = "1.18.12"
+solana-sdk = "1.18.12"
 
 [features]
 no-entrypoint = []
@@ -232,7 +218,6 @@ EOF
     log_with_timestamp "✅ Created dynamic Cargo.toml"
 }
 
-# Function to create test files
 create_test_files() {
     local contract_name="$1"
     local project_type="$2"
@@ -301,7 +286,6 @@ EOF
     log_with_timestamp "✅ Created test files"
 }
 
-# Function to run tests with coverage
 run_tests_with_coverage() {
     local contract_name="$1"
     log_with_timestamp "🧪 Running tests with coverage for $contract_name..."
@@ -327,7 +311,6 @@ run_tests_with_coverage() {
     fi
 }
 
-# Function to run security audit
 run_security_audit() {
     local contract_name="$1"
     log_with_timestamp "🛡️ Running security audit for $contract_name..." "security"
@@ -345,7 +328,6 @@ run_security_audit() {
     fi
 }
 
-# Function to run performance analysis
 run_performance_analysis() {
     local contract_name="$1"
     log_with_timestamp "⚡ Running performance analysis for $contract_name..." "performance"
@@ -365,7 +347,6 @@ run_performance_analysis() {
     fi
 }
 
-# Function to generate comprehensive report
 generate_comprehensive_report() {
     local contract_name="$1"
     local project_type="$2"
@@ -420,15 +401,12 @@ EOF
     log_with_timestamp "✅ Comprehensive report generated at $report_file"
 }
 
-# Start X-Ray daemon if enabled
 if [ "$AWS_XRAY_SDK_ENABLED" = "true" ]; then
     start_xray_daemon
 fi
 
-# Generate tarpaulin config
 generate_tarpaulin_config
 
-# Clear old logs
 : > "$LOG_FILE"
 : > "$ERROR_LOG"
 
@@ -439,7 +417,6 @@ log_with_timestamp "🚀 Starting Enhanced Non-EVM (Solana) Container..."
 log_with_timestamp "📡 Watching for smart contract files in $watch_dir..."
 log_with_timestamp "🔧 Environment: ${RUST_LOG:-info} log level"
 
-# Setup Solana environment
 setup_solana_environment || {
     log_with_timestamp "❌ Failed to setup Solana environment" "error"
 }
