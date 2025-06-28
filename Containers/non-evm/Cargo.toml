@@ -10,15 +10,13 @@ keywords = ["solana", "blockchain", "smart-contract"]
 categories = ["cryptography::cryptocurrencies"]
 
 [dependencies]
-# Core Solana dependencies (MATCH Anchor 0.31.1 requirements!)
+anchor-lang = "0.31.1"
+anchor-spl = "0.31.1"
 solana-program = "1.18.14"
 solana-sdk = "1.18.14"
 borsh = { version = "0.10.3", features = ["derive"] }
 thiserror = "1.0"
-
-# Anchor dependencies (latest compatible)
-anchor-lang = { version = "0.31.1", optional = true }
-anchor-spl = { version = "0.31.1", optional = true }
+zeroize = "1.8.1"                   # <------ Force compatible version
 
 # Additional utility crates
 spl-token = { version = "4.0.3", features = ["no-entrypoint"] }
@@ -30,7 +28,6 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 [dev-dependencies]
-# Testing dependencies (MATCH Anchor/Solana versions)
 solana-program-test = "1.18.14"
 solana-banks-client = "1.18.14"
 tokio = { version = "1.0", features = ["full"] }
@@ -48,12 +45,10 @@ no-entrypoint = []
 anchor = ["anchor-lang", "anchor-spl"]
 test-sbf = []
 
-# Metadata for documentation
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
-# Cargo configuration
 [profile.release]
 overflow-checks = true
 lto = "fat"
