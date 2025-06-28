@@ -85,7 +85,7 @@ start_xray_daemon() {
     fi
 }
 
-# Function to generate tarpaulin.toml if needed (uses string duration for timeout)
+# Function to generate tarpaulin.toml if needed
 generate_tarpaulin_config() {
     if [ ! -f "/app/tarpaulin.toml" ]; then
         log_with_timestamp "📊 Generating tarpaulin.toml configuration file..."
@@ -162,7 +162,7 @@ detect_project_type() {
     fi
 }
 
-# Function to create dynamic Cargo.toml (pins Anchor/Solana to compatible versions!)
+# Function to create dynamic Cargo.toml (for Anchor, pins zeroize to compatible version)
 create_dynamic_cargo_toml() {
     local contract_name="$1"
     local source_path="$2"
@@ -186,6 +186,8 @@ EOF
 anchor-lang = "0.31.1"
 anchor-spl = "0.31.1"
 solana-program = "1.18.14"
+solana-sdk = "1.18.14"
+zeroize = "1.8.1"
 EOF
             ;;
         "native")
@@ -198,6 +200,7 @@ borsh-derive = "0.10.3"
 thiserror = "1.0"
 num-traits = "0.2"
 num-derive = "0.4"
+zeroize = "1.8.1"
 EOF
             ;;
         *)
@@ -207,6 +210,7 @@ EOF
 solana-program = "1.18.14"
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
+zeroize = "1.8.1"
 EOF
             ;;
     esac
