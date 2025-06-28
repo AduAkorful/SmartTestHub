@@ -11,10 +11,10 @@ ENV PATH="/opt/venv/bin:/root/.cargo/bin:$PATH"
 
 RUN pip install aws-xray-sdk
 
-# Install Rust toolchain (official method)
+# Install Rust (rustup) and add to PATH
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
-# Add cargo and rustup to PATH for all users and future RUN/ENTRYPOINT
+# Add cargo and rustup to PATH for all future RUN and ENTRYPOINT
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Install Anchor CLI via cargo (NOT npm, to avoid GLIBC mismatch)
