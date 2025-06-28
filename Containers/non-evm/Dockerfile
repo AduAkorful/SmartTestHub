@@ -8,9 +8,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set up Python virtual environment for AWS X-Ray SDK
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+
 RUN pip install aws-xray-sdk
 
-# Install AVM and Anchor if needed (optional, or use pre-built with AVM)
+# ====== FIX: Install Rust via rustup, and ensure Cargo is in the PATH ======
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# ====== Install Anchor CLI globally (for anchor build) ======
+RUN npm install -g @coral-xyz/anchor-cli
+
+# Install AVM (optional, AVM is not strictly required for anchor build)
 RUN cargo install --git https://github.com/coral-xyz/anchor avm --locked --force || echo "AVM installation failed"
 
 # Rust tools for linting and coverage
