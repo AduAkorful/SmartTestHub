@@ -10,13 +10,13 @@ keywords = ["solana", "blockchain", "smart-contract"]
 categories = ["cryptography::cryptocurrencies"]
 
 [dependencies]
-# Core Solana dependencies (updated)
-solana-program = "2.3.0"
-solana-sdk = "2.3.0"
+# Core Solana dependencies (MATCH Anchor 0.31.1 requirements!)
+solana-program = "1.18.14"
+solana-sdk = "1.18.14"
 borsh = { version = "0.10.3", features = ["derive"] }
 thiserror = "1.0"
 
-# Anchor dependencies (updated)
+# Anchor dependencies (latest compatible)
 anchor-lang = { version = "0.31.1", optional = true }
 anchor-spl = { version = "0.31.1", optional = true }
 
@@ -30,9 +30,9 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 [dev-dependencies]
-# Testing dependencies (updated)
-solana-program-test = "2.3.2"
-solana-banks-client = "2.3.0"
+# Testing dependencies (MATCH Anchor/Solana versions)
+solana-program-test = "1.18.14"
+solana-banks-client = "1.18.14"
 tokio = { version = "1.0", features = ["full"] }
 assert_matches = "1.5"
 proptest = "1.0"
