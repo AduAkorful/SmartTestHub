@@ -16,7 +16,6 @@ solana-program = "1.18.12"
 solana-sdk = "1.18.12"
 borsh = { version = "0.10.3", features = ["derive"] }
 thiserror = "1.0"
-zeroize = "1.8.1"
 
 # Additional utility crates
 spl-token = { version = "4.0.3", features = ["no-entrypoint"] }
