@@ -12,11 +12,10 @@ categories = ["cryptography::cryptocurrencies"]
 [dependencies]
 anchor-lang = "0.31.1"
 anchor-spl = "0.31.1"
-solana-program = "1.18.14"
-solana-sdk = "1.18.14"
+solana-program = "1.18.12"
+solana-sdk = "1.18.12"
 borsh = { version = "0.10.3", features = ["derive"] }
 thiserror = "1.0"
-zeroize = "1.8.1"                   # <------ Force compatible version
 
 # Additional utility crates
 spl-token = { version = "4.0.3", features = ["no-entrypoint"] }
@@ -28,8 +27,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 [dev-dependencies]
-solana-program-test = "1.18.14"
-solana-banks-client = "1.18.14"
+solana-program-test = "1.18.12"
+solana-banks-client = "1.18.12"
 tokio = { version = "1.0", features = ["full"] }
 assert_matches = "1.5"
 proptest = "1.0"
@@ -62,3 +61,6 @@ codegen-units = 1
 
 [workspace]
 resolver = "2"
+
+[patch.crates-io]
+zeroize = "1.5.7"
