@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+# Ensure this script is executable (extra safety for bind-mount edge cases)
 chmod +x "$0" || true
 
 LOG_FILE="/app/logs/test.log"
@@ -170,40 +171,56 @@ EOF
             cat >> "$project_dir/Cargo.toml" <<EOF
 
 [dependencies]
-anchor-lang = "0.31.1"
-anchor-spl = "0.31.1"
-solana-program = "1.18.12"
-solana-sdk = "1.18.12"
+anchor-lang = "0.29.0"
+anchor-spl = "0.29.0"
+solana-program = "1.16.15"
+solana-sdk = "1.16.15"
+borsh = { version = "0.10.3", features = ["derive"] }
+thiserror = "1.0"
+spl-token = { version = "4.0.3", features = ["no-entrypoint"] }
+spl-associated-token-account = { version = "2.3.2", features = ["no-entrypoint"] }
+arrayref = "0.3.7"
+num-derive = "0.4"
+num-traits = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 EOF
             ;;
         "native")
             cat >> "$project_dir/Cargo.toml" <<EOF
 
 [dependencies]
-solana-program = "1.18.12"
-borsh = "0.10.3"
-borsh-derive = "0.10.3"
+solana-program = "1.16.15"
+borsh = { version = "0.10.3", features = ["derive"] }
 thiserror = "1.0"
 num-traits = "0.2"
 num-derive = "0.4"
+arrayref = "0.3.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 EOF
             ;;
         *)
             cat >> "$project_dir/Cargo.toml" <<EOF
 
 [dependencies]
-solana-program = "1.18.12"
-borsh = "0.10.3"
-borsh-derive = "0.10.3"
+solana-program = "1.16.15"
+borsh = { version = "0.10.3", features = ["derive"] }
+thiserror = "1.0"
+arrayref = "0.3.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 EOF
             ;;
     esac
     cat >> "$project_dir/Cargo.toml" <<EOF
 
 [dev-dependencies]
-solana-program-test = "1.18.12"
-solana-banks-client = "1.18.12"
-solana-sdk = "1.18.12"
+solana-program-test = "1.16.15"
+solana-banks-client = "1.16.15"
+tokio = { version = "1.0", features = ["full"] }
+assert_matches = "1.5"
+proptest = "1.0"
 
 [features]
 no-entrypoint = []
@@ -216,6 +233,8 @@ codegen-units = 1
 EOF
     log_with_timestamp "✅ Created dynamic Cargo.toml"
 }
+
+# (The rest of your existing script logic remains unchanged below)
 
 create_test_files() {
     local contract_name="$1"
