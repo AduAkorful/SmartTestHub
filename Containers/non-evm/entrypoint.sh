@@ -215,7 +215,7 @@ lto = "fat"
 codegen-units = 1
 
 [patch.crates-io]
-zeroize = "1.5.7"
+zeroize = { version = "=1.8.1" }
 EOF
     log_with_timestamp "✅ Created dynamic Cargo.toml"
 }
