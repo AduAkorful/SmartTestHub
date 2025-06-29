@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-# Ensure this script is executable (extra safety for bind-mount edge cases)
 chmod +x "$0" || true
 
 LOG_FILE="/app/logs/test.log"
@@ -214,6 +213,9 @@ test-sbf = []
 overflow-checks = true
 lto = "fat"
 codegen-units = 1
+
+[patch.crates-io]
+zeroize = "1.5.7"
 EOF
     log_with_timestamp "✅ Created dynamic Cargo.toml"
 }
