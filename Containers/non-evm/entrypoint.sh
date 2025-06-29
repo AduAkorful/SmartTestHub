@@ -174,7 +174,6 @@ anchor-lang = "0.31.1"
 anchor-spl = "0.31.1"
 solana-program = "1.18.12"
 solana-sdk = "1.18.12"
-zeroize = "1.8.1"
 EOF
             ;;
         "native")
@@ -187,7 +186,6 @@ borsh-derive = "0.10.3"
 thiserror = "1.0"
 num-traits = "0.2"
 num-derive = "0.4"
-zeroize = "1.8.1"
 EOF
             ;;
         *)
@@ -197,7 +195,6 @@ EOF
 solana-program = "1.18.12"
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
-zeroize = "1.8.1"
 EOF
             ;;
     esac
