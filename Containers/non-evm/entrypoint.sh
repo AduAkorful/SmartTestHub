@@ -178,7 +178,7 @@ solana-sdk = "1.16.15"
 borsh = { version = "0.10.3", features = ["derive"] }
 thiserror = "1.0"
 spl-token = { version = "4.0.3", features = ["no-entrypoint"] }
-spl-associated-token-account = { version = "2.3.2", features = ["no-entrypoint"] }
+spl-associated-token-account = { version = "5.0.1", features = ["no-entrypoint"] }
 arrayref = "0.3.7"
 num-derive = "0.4"
 num-traits = "0.2"
@@ -233,8 +233,6 @@ codegen-units = 1
 EOF
     log_with_timestamp "✅ Created dynamic Cargo.toml"
 }
-
-# (The rest of your existing script logic remains unchanged below)
 
 create_test_files() {
     local contract_name="$1"
