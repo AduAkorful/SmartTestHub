@@ -521,6 +521,10 @@ EOF
             end_time=$(date +%s)
             generate_comprehensive_report "$contract_name" "$project_type" "$start_time" "$end_time"
             log_with_timestamp "🏁 Completed processing $filename"
+            # Aggregate all contract reports into a unified summary
+            if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
+                node /app/scripts/aggregate-all-logs.js | tee -a "$LOG_FILE"
+            fi
             log_with_timestamp "=========================================="
         } 2>&1
     fi
@@ -597,6 +601,10 @@ EOF
                     end_time=$(date +%s)
                     generate_comprehensive_report "$contract_name" "$project_type" "$start_time" "$end_time"
                     log_with_timestamp "🏁 Completed processing $filename"
+                    # Aggregate all contract reports into a unified summary
+                    if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
+                        node /app/scripts/aggregate-all-logs.js | tee -a "$LOG_FILE"
+                    fi
                     log_with_timestamp "=========================================="
                     touch "/app/processed/$filename"
                 } 2>&1
