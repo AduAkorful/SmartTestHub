@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-# Ensure this script is executable (extra safety for bind-mount edge cases)
 chmod +x "$0" || true
 
 LOG_FILE="/app/logs/test.log"
@@ -29,27 +28,15 @@ log_with_timestamp() {
     local log_type="${2:-info}"
     local timestamp="[$(date '+%Y-%m-%d %H:%M:%S')]"
     case $log_type in
-        "error")
-            echo "$timestamp ❌ $message" | tee -a "$LOG_FILE" "$ERROR_LOG"
-            ;;
-        "security")
-            echo "$timestamp 🛡️ $message" | tee -a "$LOG_FILE" "$SECURITY_LOG"
-            ;;
-        "performance")
-            echo "$timestamp ⚡ $message" | tee -a "$LOG_FILE" "$PERFORMANCE_LOG"
-            ;;
-        "xray")
-            echo "$timestamp 📡 $message" | tee -a "$LOG_FILE" "$XRAY_LOG"
-            ;;
-        *)
-            echo "$timestamp $message" | tee -a "$LOG_FILE"
-            ;;
+        "error") echo "$timestamp ❌ $message" | tee -a "$LOG_FILE" "$ERROR_LOG" ;;
+        "security") echo "$timestamp 🛡️ $message" | tee -a "$LOG_FILE" "$SECURITY_LOG" ;;
+        "performance") echo "$timestamp ⚡ $message" | tee -a "$LOG_FILE" "$PERFORMANCE_LOG" ;;
+        "xray") echo "$timestamp 📡 $message" | tee -a "$LOG_FILE" "$XRAY_LOG" ;;
+        *) echo "$timestamp $message" | tee -a "$LOG_FILE" ;;
     esac
 }
 
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
-}
+command_exists() { command -v "$1" >/dev/null 2>&1; }
 
 start_xray_daemon() {
     log_with_timestamp "📡 Setting up AWS X-Ray daemon..." "xray"
@@ -175,7 +162,8 @@ anchor-lang = "0.29.0"
 anchor-spl = "0.29.0"
 solana-program = "1.16.15"
 solana-sdk = "1.16.15"
-borsh = { version = "0.10.3", features = ["derive"] }
+borsh = "0.10.3"
+borsh-derive = "0.10.3"
 thiserror = "1.0"
 spl-token = { version = "4.0.3", features = ["no-entrypoint"] }
 spl-associated-token-account = { version = "5.0.1", features = ["no-entrypoint"] }
@@ -184,6 +172,14 @@ num-derive = "0.4"
 num-traits = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+itertools = "0.13"
+anyhow = "1"
+bytemuck = { version = "1.15", features = ["derive"] }
+lazy_static = "1"
+regex = "1"
+cfg-if = "1"
+log = "0.4"
+once_cell = "1"
 EOF
             ;;
         "native")
@@ -191,13 +187,22 @@ EOF
 
 [dependencies]
 solana-program = "1.16.15"
-borsh = { version = "0.10.3", features = ["derive"] }
+borsh = "0.10.3"
+borsh-derive = "0.10.3"
 thiserror = "1.0"
 num-traits = "0.2"
 num-derive = "0.4"
 arrayref = "0.3.7"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+itertools = "0.13"
+anyhow = "1"
+bytemuck = { version = "1.15", features = ["derive"] }
+lazy_static = "1"
+regex = "1"
+cfg-if = "1"
+log = "0.4"
+once_cell = "1"
 EOF
             ;;
         *)
@@ -205,11 +210,20 @@ EOF
 
 [dependencies]
 solana-program = "1.16.15"
-borsh = { version = "0.10.3", features = ["derive"] }
+borsh = "0.10.3"
+borsh-derive = "0.10.3"
 thiserror = "1.0"
 arrayref = "0.3.7"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+itertools = "0.13"
+anyhow = "1"
+bytemuck = { version = "1.15", features = ["derive"] }
+lazy_static = "1"
+regex = "1"
+cfg-if = "1"
+log = "0.4"
+once_cell = "1"
 EOF
             ;;
     esac
