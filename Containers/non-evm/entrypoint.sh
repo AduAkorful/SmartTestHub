@@ -165,8 +165,8 @@ solana-sdk = "1.16.15"
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
 thiserror = "1.0"
-spl-token = { version = "4.0.3", features = ["no-entrypoint"] }
-spl-associated-token-account = { version = "5.0.1", features = ["no-entrypoint"] }
+spl-token = { version = "3.5.0", features = ["no-entrypoint"] }
+spl-associated-token-account = { version = "1.1.2", features = ["no-entrypoint"] }
 arrayref = "0.3.7"
 num-derive = "0.4"
 num-traits = "0.2"
