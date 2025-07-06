@@ -1,6 +1,10 @@
-FROM python:3.10-slim
-WORKDIR /app
-COPY main.py .
-RUN pip install fastapi uvicorn
-EXPOSE 5000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000"]
+FROM ollama/ollama:latest
+
+# Download the phi3:mini model at build time (custom entrypoint handles serving)
+RUN ollama pull phi3:mini
+
+# Expose Ollama API port
+EXPOSE 11434
+
+# Start Ollama server
+CMD ["ollama", "serve"]
