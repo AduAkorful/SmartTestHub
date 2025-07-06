@@ -86,7 +86,7 @@ services:
   # AI Log Processor Service
   ai-log-processor:
     build:
-      context: ../ai-log-processor
+      context: ./ai-log-processor
     ports:
       - "5000:5000"
     networks:
