@@ -2,69 +2,57 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
+// Directory containing contract reports/logs
 const reportsDir = '/app/logs/reports';
-const summarySuffix = '_report.md';
-const outputFile = path.join(reportsDir, 'complete-contracts-report.md');
 
-const summaries = fs.readdirSync(reportsDir)
-  .filter(f => f.endsWith(summarySuffix));
+// Output file
+const outputFile = '/app/logs/reports/complete-contracts-report.md';
 
-let output = `# Complete Smart Contract Testing & Analysis Report (Solana/Non-EVM)\n\nGenerated: ${new Date().toISOString()}\n\n`;
+// Collect all report files
+const files = fs.readdirSync(reportsDir)
+  .filter(f => f.endsWith('.md') || f.endsWith('.txt'))
+  .map(f => path.join(reportsDir, f));
 
-for (const file of summaries) {
-  const fullPath = path.join(reportsDir, file);
-  const content = fs.readFileSync(fullPath, 'utf-8');
-  const contractName = file.replace(summarySuffix, '');
-
-  // --- Overview
-  const overview = content.match(/## Overview[\s\S]*?(?=\n## |\n# |$)/);
-  output += `## Contract: ${contractName}\n\n`;
-  if (overview) output += `### Overview\n${overview[0].replace('## Overview','').trim()}\n\n`;
-
-  // --- Build Status
-  const build = content.match(/## Build Status[\s\S]*?(?=\n## |\n# |$)/);
-  if (build) output += `### Build Status\n${build[0].replace('## Build Status','').trim()}\n\n`;
-
-  // --- Test Results
-  const testResults = content.match(/## Test Results[\s\S]*?(?=\n## |\n# |$)/);
-  if (testResults) output += `### Test Results\n${testResults[0].replace('## Test Results','').trim()}\n\n`;
-
-  // --- Security Analysis
-  const security = content.match(/## Security Analysis[\s\S]*?(?=\n## |\n# |$)/);
-  if (security) output += `### Security Analysis\n${security[0].replace('## Security Analysis','').trim()}\n\n`;
-
-  // --- Performance Analysis
-  const performance = content.match(/## Performance Analysis[\s\S]*?(?=\n## |\n# |$)/);
-  if (performance) output += `### Performance Analysis\n${performance[0].replace('## Performance Analysis','').trim()}\n\n`;
-
-  // --- Recommendations
-  const recommendations = content.match(/## Recommendations[\s\S]*?(?=\n## |\n# |$)/);
-  if (recommendations) output += `### Recommendations\n${recommendations[0].replace('## Recommendations','').trim()}\n\n`;
-
-  output += `---\n\n`;
+// Aggregate content
+let aggregated = '';
+for (const file of files) {
+  aggregated += `\n\n## File: ${path.basename(file)}\n`;
+  aggregated += fs.readFileSync(file, 'utf8');
 }
 
-async function processWithAI(aggregated) {
+// IMPROVED, DETAILED PROMPT
+const prompt = `
+You are an expert Solana smart contract developer and security auditor.
+Given the following Solana smart contract testing and analysis report, perform these tasks:
+- Organize the report into clear, logical sections (e.g., Compilation, Tests, Security, Size).
+- Rewrite the content to be clear, concise, and useful for developers.
+- For each error, warning, or failed test, provide actionable insights or suggestions to help resolve the issue.
+- For security findings, explain the risks and recommend best practices or code changes.
+- Highlight important information using bullet points or tables where helpful.
+- Ensure your summary is comprehensive but easy to read.
+
+Report to analyze:
+${aggregated}
+`;
+
+// POST to Ollama API
+async function enhanceReport() {
   try {
     const response = await axios.post(
       'http://ai-log-processor:11434/v1/chat/completions',
       {
         model: "phi3:mini",
-        messages: [{
-          role: "user",
-          content: "Summarize and enhance the following Solana smart contract testing report for clarity and insight:\n\n" + aggregated
-        }],
+        messages: [{ role: "user", content: prompt }],
         max_tokens: 2048
       }
     );
-    const aiLogs = response.data.choices[0].message.content;
-    fs.writeFileSync(outputFile, aiLogs);
-    console.log(`AI-enhanced report created at ${outputFile}`);
+    const aiSummary = response.data.choices[0].message.content;
+    fs.writeFileSync(outputFile, aiSummary);
+    console.log("AI-enhanced report written to", outputFile);
   } catch (err) {
-    console.error('Failed to process logs with AI:', err);
+    console.error("AI enhancement failed, writing raw report.", err?.message || err);
     fs.writeFileSync(outputFile, aggregated);
-    console.log(`Original report created at ${outputFile}`);
   }
 }
 
-processWithAI(output);
+enhanceReport();
