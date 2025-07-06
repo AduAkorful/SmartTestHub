@@ -2,25 +2,30 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
-// Directory containing contract reports/logs
 const reportsDir = '/app/logs/reports';
-
-// Output file
 const outputFile = '/app/logs/reports/complete-contracts-report.md';
 
-// Collect all report files
+if (!fs.existsSync(reportsDir)) {
+  console.error("Reports directory does not exist:", reportsDir);
+  process.exit(1);
+}
+
 const files = fs.readdirSync(reportsDir)
   .filter(f => f.endsWith('.md') || f.endsWith('.txt'))
   .map(f => path.join(reportsDir, f));
 
-// Aggregate content
+if (files.length === 0) {
+  console.log("No report files found in", reportsDir);
+  fs.writeFileSync(outputFile, "# No reports found to summarize.\n");
+  process.exit(0);
+}
+
 let aggregated = '';
 for (const file of files) {
   aggregated += `\n\n## File: ${path.basename(file)}\n`;
   aggregated += fs.readFileSync(file, 'utf8');
 }
 
-// IMPROVED, DETAILED PROMPT
 const prompt = `
 You are an expert smart contract developer and security auditor.
 Given the following smart contract analysis report, perform these tasks:
@@ -35,7 +40,6 @@ Report to analyze:
 ${aggregated}
 `;
 
-// POST to Ollama API
 async function enhanceReport() {
   try {
     const response = await axios.post(
@@ -50,7 +54,7 @@ async function enhanceReport() {
     fs.writeFileSync(outputFile, aiSummary);
     console.log("AI-enhanced report written to", outputFile);
   } catch (err) {
-    console.error("AI enhancement failed, writing raw report.", (err && err.message) ? err.message : err);
+    console.error("AI enhancement failed, writing raw report.", err?.message || err);
     fs.writeFileSync(outputFile, aggregated);
   }
 }
