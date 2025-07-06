@@ -351,10 +351,16 @@ EOF
 
       log_with_timestamp "📋 Test summary created: logs/reports/test-summary-${contract_name}.md"
       log_with_timestamp "🏁 All EVM analysis complete for $filename"
-      log_with_timestamp "==========================================\n"
+      log_with_timestamp "=========================================="
 
-      node /app/scripts/aggregate-all-logs.js | tee -a "$LOG_FILE"
-      log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/complete-contracts-report.md"
+      # Run AI-enhanced aggregation and log result
+      log_with_timestamp "🤖 Starting AI-enhanced aggregation..."
+      if node /app/scripts/aggregate-all-logs.js >> "$LOG_FILE" 2>&1; then
+        log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/complete-contracts-report.md"
+      else
+        log_with_timestamp "❌ AI-enhanced aggregation failed (see log for details)"
+      fi
+      log_with_timestamp "=========================================="
 
     } 2>&1
   fi
