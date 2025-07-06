@@ -83,6 +83,15 @@ services:
     networks:
       - smarthub-network
 
+  # AI Log Processor Service
+  ai-log-processor:
+    build:
+      context: ../ai-log-processor
+    ports:
+      - "5000:5000"
+    networks:
+      - smarthub-network
+
 volumes:
   shared_input:  # Docker-managed volume for input files
   shared_logs_evm:  # Docker-managed volume for EVM logs
