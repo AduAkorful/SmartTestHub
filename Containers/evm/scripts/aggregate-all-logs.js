@@ -50,7 +50,7 @@ async function enhanceReport() {
     fs.writeFileSync(outputFile, aiSummary);
     console.log("AI-enhanced report written to", outputFile);
   } catch (err) {
-    console.error("AI enhancement failed, writing raw report.", err?.message || err);
+    console.error("AI enhancement failed, writing raw report.", (err && err.message) ? err.message : err);
     fs.writeFileSync(outputFile, aggregated);
   }
 }
