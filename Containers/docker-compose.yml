@@ -45,7 +45,6 @@ services:
     networks:
       - smarthub-network
 
-  # File input service that makes the shared directory accessible to your backend
   file-input:
     image: busybox
     container_name: file-input-service
@@ -63,7 +62,6 @@ services:
     networks:
       - smarthub-network
 
-  # Permissions handler service - runs once to set up permissions
   permissions:
     image: busybox
     volumes:
@@ -83,19 +81,23 @@ services:
     networks:
       - smarthub-network
 
-  # AI Log Processor Service
   ai-log-processor:
     build:
       context: ./ai-log-processor
+      dockerfile: Dockerfile
+    container_name: ai-log-processor
     ports:
-      - "5000:5000"
+      - "5000:11434"
     networks:
       - smarthub-network
+    volumes:
+      - ollama:/root/.ollama
 
 volumes:
-  shared_input:  # Docker-managed volume for input files
-  shared_logs_evm:  # Docker-managed volume for EVM logs
-  shared_logs_non_evm:  # Docker-managed volume for non-EVM logs
+  shared_input:
+  shared_logs_evm:
+  shared_logs_non_evm:
+  ollama:
 
 networks:
   smarthub-network:
