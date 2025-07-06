@@ -44,17 +44,25 @@ for (const file of summaries) {
   output += `---\n\n`;
 }
 
-// --- AI Log Processing Step ---
 async function processWithAI(aggregated) {
   try {
-    const response = await require('axios').post('http://ai-log-processor:5000/process-logs', { logs: aggregated });
-    const aiLogs = response.data.logs;
+    const response = await axios.post(
+      'http://ai-log-processor:11434/v1/chat/completions',
+      {
+        model: "phi3:mini",
+        messages: [{
+          role: "user",
+          content: "Summarize and enhance the following Solana smart contract testing report for clarity and insight:\n\n" + aggregated
+        }],
+        max_tokens: 2048
+      }
+    );
+    const aiLogs = response.data.choices[0].message.content;
     fs.writeFileSync(outputFile, aiLogs);
     console.log(`AI-enhanced report created at ${outputFile}`);
   } catch (err) {
     console.error('Failed to process logs with AI:', err);
-    // fallback: write original output
-    fs.writeFileSync(outputFile, output);
+    fs.writeFileSync(outputFile, aggregated);
     console.log(`Original report created at ${outputFile}`);
   }
 }
