@@ -30,7 +30,6 @@ for (const file of summaries) {
   output += `### Foundry Test Results\n`;
   const foundryTestBlock = content.match(/Ran [\s\S]+?(?=Wrote LCOV|$)/);
   if (foundryTestBlock) {
-    // Show only PASS/FAIL lines and suite summary
     const lines = foundryTestBlock[0].split('\n')
       .filter(line => line.match(/^\[(PASS|FAIL)\]/) || line.match(/Suite result:/) || line.match(/tests? passed|tests? failed/));
     if (lines.length > 0) output += lines.join('\n') + '\n\n';
@@ -66,7 +65,6 @@ for (const file of summaries) {
   output += `### Simple Security Checks\n`;
   const highlights = content.match(/Simple Security Checks:[\s\S]*?(?=\n\n|\n# |$)/);
   if (highlights) {
-    // Show only the checks with ⚠️ or ❌
     const lines = highlights[0].split('\n').filter(line =>
       line.includes('⚠️') || line.includes('❌') || line.includes('avoid')
     );
@@ -94,18 +92,23 @@ for (const file of summaries) {
   output += `---\n\n`;
 }
 
-// --- AI Log Processing Step ---
 async function processWithAI(aggregated) {
   try {
-    const response = await require('axios').post('http://ai-log-processor:5000/process-logs', { logs: aggregated });
-    const aiLogs = response.data.logs;
+    const response = await axios.post(
+      'http://ai-log-processor:11434/v1/chat/completions',
+      {
+        model: "phi3:mini",
+        messages: [{ role: "user", content: "Summarize and enhance this smart contract analysis report:\n\n" + aggregated }],
+        max_tokens: 2048
+      }
+    );
+    const aiLogs = response.data.choices[0].message.content;
     fs.writeFileSync(outputFile, aiLogs);
-    console.log(`AI-enhanced report written to ${outputFile}`);
+    console.log(`AI-enhanced report created at ${outputFile}`);
   } catch (err) {
     console.error('Failed to process logs with AI:', err);
-    // fallback: write original output
-    fs.writeFileSync(outputFile, output);
-    console.log(`Original report written to ${outputFile}`);
+    fs.writeFileSync(outputFile, aggregated);
+    console.log(`Original report created at ${outputFile}`);
   }
 }
 
