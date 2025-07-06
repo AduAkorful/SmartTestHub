@@ -354,6 +354,7 @@ EOF
       log_with_timestamp "==========================================\n"
 
       node /app/scripts/aggregate-all-logs.js | tee -a "$LOG_FILE"
+      log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/complete-contracts-report.md"
 
     } 2>&1
   fi
