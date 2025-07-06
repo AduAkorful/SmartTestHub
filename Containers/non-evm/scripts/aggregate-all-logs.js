@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
 
 const reportsDir = '/app/logs/reports';
 const summarySuffix = '_report.md';
@@ -43,5 +44,19 @@ for (const file of summaries) {
   output += `---\n\n`;
 }
 
-fs.writeFileSync(outputFile, output);
-console.log(`Aggregated report created at ${outputFile}`);
+// --- AI Log Processing Step ---
+async function processWithAI(aggregated) {
+  try {
+    const response = await require('axios').post('http://ai-log-processor:5000/process-logs', { logs: aggregated });
+    const aiLogs = response.data.logs;
+    fs.writeFileSync(outputFile, aiLogs);
+    console.log(`AI-enhanced report created at ${outputFile}`);
+  } catch (err) {
+    console.error('Failed to process logs with AI:', err);
+    // fallback: write original output
+    fs.writeFileSync(outputFile, output);
+    console.log(`Original report created at ${outputFile}`);
+  }
+}
+
+processWithAI(output);
