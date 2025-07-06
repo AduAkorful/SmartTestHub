@@ -2,114 +2,57 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
+// Directory containing contract reports/logs
 const reportsDir = '/app/logs/reports';
-const summaryPrefix = 'test-summary-';
-const outputFile = path.join(reportsDir, 'complete-contracts-report.md');
 
-const summaries = fs.readdirSync(reportsDir)
-  .filter(f => f.startsWith(summaryPrefix) && f.endsWith('.md'));
+// Output file
+const outputFile = '/app/logs/reports/complete-contracts-report.md';
 
-let output = `# Complete Smart Contract Testing & Analysis Report\n\nGenerated: ${new Date().toISOString()}\n\n`;
+// Collect all report files
+const files = fs.readdirSync(reportsDir)
+  .filter(f => f.endsWith('.md') || f.endsWith('.txt'))
+  .map(f => path.join(reportsDir, f));
 
-for (const file of summaries) {
-  const fullPath = path.join(reportsDir, file);
-  const content = fs.readFileSync(fullPath, 'utf-8');
-  const contractName = file.replace(summaryPrefix, '').replace('.md', '');
-
-  // --- Contract Information
-  const info = content.match(/## Contract Information[\s\S]*?(?=\n## |\n# |$)/);
-  output += `## Contract: ${contractName}\n\n`;
-  if (info) output += `### Contract Information\n${info[0].replace('## Contract Information','').trim()}\n\n`;
-
-  // --- Compilation result
-  const compilation = content.match(/- \*\*Compilation\*\*: (.*)/);
-  output += `### Compilation Result\n`;
-  if (compilation) output += `${compilation[1].trim()}\n\n`;
-
-  // --- Test results (extract each test's result line)
-  output += `### Foundry Test Results\n`;
-  const foundryTestBlock = content.match(/Ran [\s\S]+?(?=Wrote LCOV|$)/);
-  if (foundryTestBlock) {
-    const lines = foundryTestBlock[0].split('\n')
-      .filter(line => line.match(/^\[(PASS|FAIL)\]/) || line.match(/Suite result:/) || line.match(/tests? passed|tests? failed/));
-    if (lines.length > 0) output += lines.join('\n') + '\n\n';
-    else output += '_No test results found._\n\n';
-  } else {
-    output += '_No test results found._\n\n';
-  }
-
-  // --- Security Analysis (extract Slither findings, not just pass/fail)
-  output += `### Security Analysis (Slither)\n`;
-  const slitherReportFile = path.join('/app/logs/slither', `${contractName}-report.txt`);
-  if (fs.existsSync(slitherReportFile)) {
-    const slitherLines = fs.readFileSync(slitherReportFile, 'utf-8')
-      .split('\n')
-      .filter(line =>
-        line.match(/INFO:Detectors:/) ||
-        line.match(/should be constant/) ||
-        line.match(/should be immutable/) ||
-        line.match(/too many digits/) ||
-        line.match(/contains known severe issues/) ||
-        line.match(/Reference:/)
-      );
-    if (slitherLines.length > 0) {
-      output += slitherLines.join('\n') + '\n\n';
-    } else {
-      output += '_No actionable Slither findings._\n\n';
-    }
-  } else {
-    output += '_No Slither report found._\n\n';
-  }
-
-  // --- Simple Security Checks (actionable)
-  output += `### Simple Security Checks\n`;
-  const highlights = content.match(/Simple Security Checks:[\s\S]*?(?=\n\n|\n# |$)/);
-  if (highlights) {
-    const lines = highlights[0].split('\n').filter(line =>
-      line.includes('⚠️') || line.includes('❌') || line.includes('avoid')
-    );
-    if (lines.length > 0) output += lines.join('\n') + '\n\n';
-    else output += '_No critical issues detected._\n\n';
-  } else {
-    output += '_No security check summary found._\n\n';
-  }
-
-  // --- Contract Size (warn if near or over EIP-170)
-  output += `### Contract Size\n`;
-  const sizeFile = path.join(reportsDir, `${contractName}-size.txt`);
-  if (fs.existsSync(sizeFile)) {
-    const sizeText = fs.readFileSync(sizeFile, 'utf-8');
-    const statusLine = sizeText.split('\n').find(l => l.includes('Status:'));
-    if (statusLine && statusLine.includes('Exceeds')) {
-      output += `**Warning:** Contract size exceeds EIP-170 limit!\n${sizeText}\n\n`;
-    } else {
-      output += sizeText + '\n\n';
-    }
-  } else {
-    output += '_No contract size information._\n\n';
-  }
-
-  output += `---\n\n`;
+// Aggregate content
+let aggregated = '';
+for (const file of files) {
+  aggregated += `\n\n## File: ${path.basename(file)}\n`;
+  aggregated += fs.readFileSync(file, 'utf8');
 }
 
-async function processWithAI(aggregated) {
+// IMPROVED, DETAILED PROMPT
+const prompt = `
+You are an expert smart contract developer and security auditor.
+Given the following smart contract analysis report, perform these tasks:
+- Organize the report into clear, logical sections (e.g., Compilation, Tests, Security, Size).
+- Rewrite the content to be clear, concise, and useful for developers.
+- For each error, warning, or failed test, provide actionable insights or suggestions to help resolve the issue.
+- For security findings, explain the risks and recommend best practices or code changes.
+- Highlight important information using bullet points or tables where helpful.
+- Ensure your summary is comprehensive but easy to read.
+
+Report to analyze:
+${aggregated}
+`;
+
+// POST to Ollama API
+async function enhanceReport() {
   try {
     const response = await axios.post(
       'http://ai-log-processor:11434/v1/chat/completions',
       {
         model: "phi3:mini",
-        messages: [{ role: "user", content: "Summarize and enhance this smart contract analysis report:\n\n" + aggregated }],
+        messages: [{ role: "user", content: prompt }],
         max_tokens: 2048
       }
     );
-    const aiLogs = response.data.choices[0].message.content;
-    fs.writeFileSync(outputFile, aiLogs);
-    console.log(`AI-enhanced report created at ${outputFile}`);
+    const aiSummary = response.data.choices[0].message.content;
+    fs.writeFileSync(outputFile, aiSummary);
+    console.log("AI-enhanced report written to", outputFile);
   } catch (err) {
-    console.error('Failed to process logs with AI:', err);
+    console.error("AI enhancement failed, writing raw report.", err?.message || err);
     fs.writeFileSync(outputFile, aggregated);
-    console.log(`Original report created at ${outputFile}`);
   }
 }
 
-processWithAI(output);
+enhanceReport();
