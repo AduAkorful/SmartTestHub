@@ -1,11 +1,12 @@
-require('dotenv').config({ path: '/app/.env' }); // Adjust path if needed
-
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
+// Use Gemini 2.5 Flash model via Google API
+require('dotenv').config({ path: '/app/.env' });
+
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = 'gemini-2.5-pro';
+const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 const reportsDir = '/app/logs/reports';
@@ -29,6 +30,7 @@ for (const file of files) {
   aggregated += fs.readFileSync(file, 'utf8');
 }
 
+// IMPROVED, DETAILED PROMPT
 const prompt = `
 You are an expert Solana smart contract developer and security auditor.
 Given the following Solana smart contract testing and analysis report, perform these tasks:
@@ -45,6 +47,7 @@ ${aggregated}
 
 async function enhanceReport() {
   try {
+    console.log("Sending request to Gemini 2.5 Flash endpoint...");
     const response = await axios.post(
       GEMINI_URL,
       {
@@ -61,7 +64,6 @@ async function enhanceReport() {
         }
       }
     );
-
     if (
       !response.data ||
       !response.data.candidates ||
@@ -73,14 +75,12 @@ async function enhanceReport() {
     ) {
       throw new Error("Malformed response from Gemini API");
     }
-
     const aiSummary = response.data.candidates[0].content.parts[0].text;
     fs.writeFileSync(outputFile, aiSummary);
     console.log("AI-enhanced report written to", outputFile);
   } catch (err) {
-    console.error("AI enhancement failed, writing raw report.", err?.message || err);
+    console.error("AI enhancement failed, writing raw report.", (err && err.message) ? err.message : err);
     fs.writeFileSync(outputFile, aggregated);
-    console.log("Raw report written to", outputFile);
   }
 }
 
