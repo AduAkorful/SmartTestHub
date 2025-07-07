@@ -81,23 +81,11 @@ services:
     networks:
       - smarthub-network
 
-  ai-log-processor:
-    build:
-      context: ./ai-log-processor
-      dockerfile: Dockerfile
-    container_name: ai-log-processor
-    ports:
-      - "5000:11434"
-    networks:
-      - smarthub-network
-    volumes:
-      - ollama:/root/.ollama
 
 volumes:
   shared_input:
   shared_logs_evm:
   shared_logs_non_evm:
-  ollama:
 
 networks:
   smarthub-network:
