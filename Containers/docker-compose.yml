@@ -23,6 +23,8 @@ services:
       - .env
     networks:
       - smarthub-network
+    ports:
+      - "2053:2053"
 
   non-evm:
     build:
