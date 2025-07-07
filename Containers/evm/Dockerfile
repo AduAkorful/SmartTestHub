@@ -45,14 +45,12 @@ RUN npm install -g @openzeppelin/hardhat-upgrades \
 
 COPY . .
 
-# Remove Node.js upload server section if it exists
-
 RUN dos2unix ./entrypoint.sh && chmod +x ./entrypoint.sh
 
 RUN echo '#!/bin/bash\n\
 source /opt/venv/bin/activate\n\
 chmod +x /app/entrypoint.sh\n\
-uvicorn main:app --host 0.0.0.0 --port 2053 &\n\
+uvicorn main:app --host 0.0.0.0 --port 80 &\n\
 exec /app/entrypoint.sh "$@"' > /docker-entrypoint.sh \
     && chmod +x /docker-entrypoint.sh
 
