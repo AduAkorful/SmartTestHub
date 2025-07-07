@@ -2,11 +2,18 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
-// Directory containing contract reports/logs
-const reportsDir = '/app/logs/reports';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = 'gemini-2.5-pro';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
-// Output file
+const reportsDir = '/app/logs/reports';
 const outputFile = '/app/logs/reports/complete-contracts-report.md';
+
+// Check if API key is present
+if (!GEMINI_API_KEY) {
+  console.error("Error: GEMINI_API_KEY environment variable not set.");
+  process.exit(1);
+}
 
 // Collect all report files
 const files = fs.readdirSync(reportsDir)
@@ -20,7 +27,6 @@ for (const file of files) {
   aggregated += fs.readFileSync(file, 'utf8');
 }
 
-// IMPROVED, DETAILED PROMPT
 const prompt = `
 You are an expert Solana smart contract developer and security auditor.
 Given the following Solana smart contract testing and analysis report, perform these tasks:
@@ -35,22 +41,42 @@ Report to analyze:
 ${aggregated}
 `;
 
-// POST to Ollama API
 async function enhanceReport() {
   try {
     const response = await axios.post(
-      'http://ai-log-processor:11434/v1/chat/completions',
+      GEMINI_URL,
       {
-        model: "phi3:mini",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 2048
+        contents: [
+          {
+            parts: [{ text: prompt }]
+          }
+        ]
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-goog-api-key": GEMINI_API_KEY
+        }
       }
     );
-    const aiSummary = response.data.choices[0].message.content;
+
+    if (
+      !response.data ||
+      !response.data.candidates ||
+      !response.data.candidates[0] ||
+      !response.data.candidates[0].content ||
+      !response.data.candidates[0].content.parts ||
+      !response.data.candidates[0].content.parts[0] ||
+      !response.data.candidates[0].content.parts[0].text
+    ) {
+      throw new Error("Malformed response from Gemini API");
+    }
+
+    const aiSummary = response.data.candidates[0].content.parts[0].text;
     fs.writeFileSync(outputFile, aiSummary);
     console.log("AI-enhanced report written to", outputFile);
   } catch (err) {
-    console.error("AI enhancement failed, writing raw report.", (err && err.message) ? err.message : err);
+    console.error("AI enhancement failed, writing raw report.", err?.message || err);
     fs.writeFileSync(outputFile, aggregated);
   }
 }
