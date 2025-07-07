@@ -45,9 +45,6 @@ RUN npm install -g @openzeppelin/hardhat-upgrades \
 
 COPY . .
 
-# --- Upload server section ---
-COPY upload-server.js ./
-# --- End upload server section ---
 
 RUN dos2unix ./entrypoint.sh && chmod +x ./entrypoint.sh
 
