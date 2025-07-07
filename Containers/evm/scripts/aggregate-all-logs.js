@@ -1,3 +1,5 @@
+require('dotenv').config({ path: '/app/.env' }); // Adjust path if needed
+
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
