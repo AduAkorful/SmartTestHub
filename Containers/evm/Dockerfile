@@ -24,7 +24,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
 
 RUN python3 -m venv /opt/venv && \
     . /opt/venv/bin/activate && \
-    pip install slither-analyzer && \
+    pip install slither-analyzer fastapi uvicorn && \
     echo 'source /opt/venv/bin/activate' >> /root/.bashrc
 
 ENV PATH="/opt/venv/bin:${PATH}"
@@ -45,13 +45,15 @@ RUN npm install -g @openzeppelin/hardhat-upgrades \
 
 COPY . .
 
+# Remove upload-server.js if present
+RUN rm -f /app/upload-server.js
 
 RUN dos2unix ./entrypoint.sh && chmod +x ./entrypoint.sh
 
 RUN echo '#!/bin/bash\n\
 source /opt/venv/bin/activate\n\
 chmod +x /app/entrypoint.sh\n\
-node /app/upload-server.js &\n\
+uvicorn main:app --host 0.0.0.0 --port 80 &\n\
 exec /app/entrypoint.sh "$@"' > /docker-entrypoint.sh \
     && chmod +x /docker-entrypoint.sh
 
