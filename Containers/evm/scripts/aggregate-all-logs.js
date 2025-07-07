@@ -2,10 +2,20 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = 'gemini-2.5-pro';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
 const reportsDir = '/app/logs/reports';
 const outputFile = '/app/logs/reports/complete-contracts-report.md';
 
 console.log("Starting aggregation...");
+
+// Check if API key is present
+if (!GEMINI_API_KEY) {
+  console.error("Error: GEMINI_API_KEY environment variable not set.");
+  process.exit(1);
+}
 
 // Check if reports directory exists
 if (!fs.existsSync(reportsDir)) {
@@ -51,19 +61,37 @@ ${aggregated}
 
 async function enhanceReport() {
   try {
-    console.log("Sending request to AI endpoint...");
+    console.log("Sending request to Gemini API...");
     const response = await axios.post(
-      'http://ai-log-processor:11434/v1/chat/completions',
+      GEMINI_URL,
       {
-        model: "phi3:mini",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 2048
+        contents: [
+          {
+            parts: [{ text: prompt }]
+          }
+        ]
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-goog-api-key": GEMINI_API_KEY
+        }
       }
     );
-    if (!response.data || !response.data.choices || !response.data.choices[0] || !response.data.choices[0].message) {
-      throw new Error("Malformed response from AI endpoint");
+
+    if (
+      !response.data ||
+      !response.data.candidates ||
+      !response.data.candidates[0] ||
+      !response.data.candidates[0].content ||
+      !response.data.candidates[0].content.parts ||
+      !response.data.candidates[0].content.parts[0] ||
+      !response.data.candidates[0].content.parts[0].text
+    ) {
+      throw new Error("Malformed response from Gemini API");
     }
-    const aiSummary = response.data.choices[0].message.content;
+
+    const aiSummary = response.data.candidates[0].content.parts[0].text;
     fs.writeFileSync(outputFile, aiSummary);
     console.log("AI-enhanced report written to", outputFile);
   } catch (err) {
