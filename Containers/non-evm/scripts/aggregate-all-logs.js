@@ -1,3 +1,5 @@
+require('dotenv').config({ path: '/app/.env' }); // Adjust path if needed
+
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
@@ -78,6 +80,7 @@ async function enhanceReport() {
   } catch (err) {
     console.error("AI enhancement failed, writing raw report.", err?.message || err);
     fs.writeFileSync(outputFile, aggregated);
+    console.log("Raw report written to", outputFile);
   }
 }
 
