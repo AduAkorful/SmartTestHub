@@ -24,7 +24,7 @@ services:
     networks:
       - smarthub-network
     ports:
-      - "2053:2053"
+      - "80:80"
 
   non-evm:
     build:
