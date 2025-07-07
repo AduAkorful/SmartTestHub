@@ -1,11 +1,12 @@
-require('dotenv').config({ path: '/app/.env' }); // Adjust path if needed
-
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
+// Use Gemini 2.5 Flash model via Google API
+require('dotenv').config({ path: '/app/.env' });
+
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = 'gemini-2.5-pro';
+const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 const reportsDir = '/app/logs/reports';
@@ -63,7 +64,7 @@ ${aggregated}
 
 async function enhanceReport() {
   try {
-    console.log("Sending request to Gemini API...");
+    console.log("Sending request to Gemini 2.5 Flash endpoint...");
     const response = await axios.post(
       GEMINI_URL,
       {
@@ -80,7 +81,6 @@ async function enhanceReport() {
         }
       }
     );
-
     if (
       !response.data ||
       !response.data.candidates ||
@@ -92,7 +92,6 @@ async function enhanceReport() {
     ) {
       throw new Error("Malformed response from Gemini API");
     }
-
     const aiSummary = response.data.candidates[0].content.parts[0].text;
     fs.writeFileSync(outputFile, aiSummary);
     console.log("AI-enhanced report written to", outputFile);
