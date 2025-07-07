@@ -23,15 +23,12 @@ mkdir -p /app/scripts
 
 LOG_FILE="/app/logs/evm-test.log"
 
-# Clear old log (or comment this line if you prefer appending)
 : > "$LOG_FILE"
 
-# Function to log with timestamp
 log_with_timestamp() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
-# Create a simplified hardhat config that doesn't rely on toolbox
 create_simplified_hardhat_config() {
     log_with_timestamp "📝 Creating simplified Hardhat configuration..."
     cat > "/app/hardhat.config.js" <<EOF
@@ -79,11 +76,9 @@ module.exports = {
   },
 };
 EOF
-    # Create a symbolic link in config directory if needed
     ln -sf "/app/hardhat.config.js" "/app/config/hardhat.config.js"
     log_with_timestamp "✅ Created simplified Hardhat configuration"
     
-    # Create Slither config
     cat > "/app/config/slither.config.json" <<EOF
 {
   "detectors_to_exclude": [],
@@ -100,7 +95,6 @@ EOF
     log_with_timestamp "✅ Created Slither configuration"
 }
 
-# Create simple contract analysis script without hardhat dependencies
 create_simple_analysis_script() {
     log_with_timestamp "📝 Creating simple contract analysis script..."
     cat > "/app/scripts/analyze-contract.js" <<EOF
@@ -152,7 +146,6 @@ function analyzeContract(filePath) {
         // Simple security check
         console.log('\\nSimple Security Checks:');
         
-        // Check for common vulnerabilities
         const checks = [
             { name: 'tx.origin usage (avoid)', regex: /\btx\.origin\b/g, safe: false },
             { name: 'selfdestruct/suicide', regex: /\bselfdestruct\b|\bsuicide\b/g, safe: false },
@@ -177,7 +170,6 @@ function analyzeContract(filePath) {
     }
 }
 
-// Get file path from command line or use default
 const filePath = process.argv[2] || './contracts/SimpleToken.sol';
 analyzeContract(filePath);
 EOF
@@ -185,26 +177,21 @@ EOF
     log_with_timestamp "✅ Created simple contract analysis script"
 }
 
-# Create simplified configuration
 create_simplified_hardhat_config
 create_simple_analysis_script
 
-# Watch the input folder where backend will drop .sol files
 log_with_timestamp "📡 Watching /app/input for incoming Solidity files..."
 
-# Use a marker file to prevent duplicate processing
 MARKER_DIR="/app/.processed"
 mkdir -p "$MARKER_DIR"
 
 inotifywait -m -e close_write,moved_to,create /app/input |
 while read -r directory events filename; do
   if [[ "$filename" == *.sol ]]; then
-    # Check if file was already processed (prevent duplicates)
     MARKER_FILE="$MARKER_DIR/$filename.processed"
     if [ -f "$MARKER_FILE" ]; then
         LAST_PROCESSED=$(cat "$MARKER_FILE")
         CURRENT_TIME=$(date +%s)
-        # Only process if last processed more than 30 seconds ago
         if (( $CURRENT_TIME - $LAST_PROCESSED < 30 )); then
             log_with_timestamp "⏭️ Skipping duplicate processing of $filename (processed ${LAST_PROCESSED}s ago)"
             continue
@@ -212,21 +199,17 @@ while read -r directory events filename; do
     fi
     
     {
-      # Mark file as processed with timestamp
       date +%s > "$MARKER_FILE"
       
       log_with_timestamp "🆕 Detected Solidity contract: $filename"
 
-      # Move file to /app/contracts (overwrite if same name exists)
       mkdir -p /app/contracts
       cp "/app/input/$filename" "/app/contracts/$filename"
       log_with_timestamp "📁 Copied $filename to contracts directory"
 
-      # Extract contract name for better reporting
       contract_name=$(basename "$filename" .sol)
       contract_path="/app/contracts/$filename"
       
-      # Try to compile with solc directly
       log_with_timestamp "🔨 Attempting direct Solidity compilation..."
       mkdir -p /app/artifacts
       if solc --bin --abi --optimize --overwrite -o /app/artifacts /app/contracts/$filename 2>/dev/null; then
@@ -235,7 +218,6 @@ while read -r directory events filename; do
         log_with_timestamp "⚠️ Direct compilation had issues, continuing with analysis"
       fi
       
-      # Run Foundry tests if any .t.sol files exist
       if compgen -G './test/*.t.sol' > /dev/null 2>&1; then
         log_with_timestamp "🧪 Running Foundry tests with gas reporting..."
         if forge test --gas-report --json > ./logs/foundry/foundry-test-report.json 2>&1 | tee -a "$LOG_FILE"; then
@@ -244,7 +226,6 @@ while read -r directory events filename; do
           log_with_timestamp "❌ Foundry tests failed - check logs/foundry/foundry-test-report.json"
         fi
         
-        # Generate forge coverage
         log_with_timestamp "📊 Generating Foundry coverage report..."
         if forge coverage --report lcov --report-file ./logs/coverage/foundry-lcov.info 2>&1 | tee -a "$LOG_FILE"; then
           log_with_timestamp "✅ Foundry coverage report generated"
@@ -255,7 +236,6 @@ while read -r directory events filename; do
         log_with_timestamp "ℹ️ No Foundry test files found, skipping forge test"
       fi
 
-      # Run simple static analysis with our script
       log_with_timestamp "🔍 Running simple contract analysis..."
       if node /app/scripts/analyze-contract.js "$contract_path" > "./logs/reports/${contract_name}-analysis.txt" 2>&1; then
         log_with_timestamp "✅ Simple contract analysis completed"
@@ -263,7 +243,6 @@ while read -r directory events filename; do
         log_with_timestamp "⚠️ Simple contract analysis failed"
       fi
       
-      # Run Slither if available
       log_with_timestamp "🛡️ Running Slither security analysis..."
       if command -v slither &> /dev/null; then
         if slither "$contract_path" --solc solc > "./logs/slither/${contract_name}-report.txt" 2>&1; then
@@ -275,13 +254,11 @@ while read -r directory events filename; do
         log_with_timestamp "ℹ️ Slither not available, skipping security analysis"
       fi
       
-      # Get file stats for size
       log_with_timestamp "📏 Analyzing contract size..."
       filesize=$(stat -c%s "$contract_path")
       echo "Contract: $contract_name" > "./logs/reports/${contract_name}-size.txt"
       echo "Source size: $filesize bytes" >> "./logs/reports/${contract_name}-size.txt"
       
-      # If binary was generated, get its size too
       if [ -f "/app/artifacts/${contract_name}.bin" ]; then
         binsize=$(stat -c%s "/app/artifacts/${contract_name}.bin")
         hexsize=$((binsize / 2))
@@ -295,7 +272,6 @@ while read -r directory events filename; do
       fi
       log_with_timestamp "✅ Contract size analysis completed"
 
-      # Create comprehensive test summary
       log_with_timestamp "📋 Creating test summary..."
       cat > "./logs/reports/test-summary-${contract_name}.md" <<EOF
 # Test Summary for ${contract_name}
@@ -313,7 +289,6 @@ while read -r directory events filename; do
 - **Contract Analysis**: $(grep -q "✅ Simple contract analysis completed" "$LOG_FILE" && echo "✅ COMPLETED" || echo "⚠️ FAILED")
 EOF
 
-      # Add binary size info if available
       if [ -f "/app/artifacts/${contract_name}.bin" ]; then
         cat >> "./logs/reports/test-summary-${contract_name}.md" <<EOF
 - **Compiled Size**: ${hexsize} bytes
@@ -329,7 +304,6 @@ EOF
 - Size Analysis: \`logs/reports/${contract_name}-size.txt\`
 EOF
 
-      # Add Foundry reports if they exist
       if compgen -G './test/*.t.sol' > /dev/null 2>&1; then
         cat >> "./logs/reports/test-summary-${contract_name}.md" <<EOF
 - Foundry Test Report: \`logs/foundry/foundry-test-report.json\`
@@ -344,7 +318,6 @@ EOF
 
 EOF
 
-      # Add simplified analysis highlights
       if [ -f "./logs/reports/${contract_name}-analysis.txt" ]; then
         grep "Simple Security Checks:" -A 20 "./logs/reports/${contract_name}-analysis.txt" >> "./logs/reports/test-summary-${contract_name}.md" || true
       fi
@@ -353,7 +326,6 @@ EOF
       log_with_timestamp "🏁 All EVM analysis complete for $filename"
       log_with_timestamp "=========================================="
 
-      # Run AI-enhanced aggregation and log result
       log_with_timestamp "🤖 Starting AI-enhanced aggregation..."
       if node /app/scripts/aggregate-all-logs.js >> "$LOG_FILE" 2>&1; then
         log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/complete-contracts-report.md"
