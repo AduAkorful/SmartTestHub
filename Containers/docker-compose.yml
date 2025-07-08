@@ -23,8 +23,7 @@ services:
       - .env
     networks:
       - smarthub-network
-    ports:
-      - "80:80"
+    # No web port exposed, since FastAPI is removed
 
   non-evm:
     build:
@@ -82,7 +81,6 @@ services:
     restart: "no"
     networks:
       - smarthub-network
-
 
 volumes:
   shared_input:
