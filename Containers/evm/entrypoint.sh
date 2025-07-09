@@ -3,12 +3,10 @@ set -e
 
 echo "🚀 Starting EVM container..."
 
-# Set environment variables for better integration
 export REPORT_GAS=true
 export HARDHAT_NETWORK=hardhat
 export SLITHER_CONFIG_FILE="./config/slither.config.json"
 
-# Ensure required folders exist
 mkdir -p /app/input
 mkdir -p /app/logs
 mkdir -p /app/contracts
@@ -22,7 +20,6 @@ mkdir -p /app/config
 mkdir -p /app/scripts
 
 LOG_FILE="/app/logs/evm-test.log"
-
 : > "$LOG_FILE"
 
 log_with_timestamp() {
@@ -36,37 +33,16 @@ create_simplified_hardhat_config() {
 module.exports = {
   solidity: {
     compilers: [
-      {
-        version: "0.8.24",
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: 200,
-          },
-        },
-      },
-      {
-        version: "0.8.20",
-      },
-      {
-        version: "0.8.18",
-      },
-      {
-        version: "0.8.17",
-      },
-      {
-        version: "0.6.12",
-      },
+      { version: "0.8.24", settings: { optimizer: { enabled: true, runs: 200 } } },
+      { version: "0.8.20" },
+      { version: "0.8.18" },
+      { version: "0.8.17" },
+      { version: "0.6.12" }
     ],
   },
   networks: {
-    hardhat: {
-      chainId: 1337,
-      allowUnlimitedContractSize: true,
-    },
-    localhost: {
-      url: "http://127.0.0.1:8545",
-    },
+    hardhat: { chainId: 1337, allowUnlimitedContractSize: true },
+    localhost: { url: "http://127.0.0.1:8545" },
   },
   paths: {
     sources: "./contracts",
@@ -100,33 +76,22 @@ create_simple_analysis_script() {
     cat > "/app/scripts/analyze-contract.js" <<EOF
 const fs = require('fs');
 const path = require('path');
-
 function analyzeContract(filePath) {
     console.log('Contract Analysis');
     console.log('================');
-    
     try {
         if (!fs.existsSync(filePath)) {
             console.log(\`File not found: \${filePath}\`);
             return;
         }
-        
         const content = fs.readFileSync(filePath, 'utf8');
         const stats = fs.statSync(filePath);
-        
-        // Basic info
         console.log(\`File: \${path.basename(filePath)}\`);
         console.log(\`Size: \${stats.size} bytes\`);
-        
-        // Count lines
         const lines = content.split('\\n');
         console.log(\`Lines: \${lines.length}\`);
-        
-        // Check for SPDX license
         const hasSPDX = content.includes('SPDX-License-Identifier');
         console.log(\`SPDX License: \${hasSPDX ? 'Yes ✅' : 'No ❌'}\`);
-        
-        // Check for common function signatures
         console.log('\\nFunction Detection:');
         const funcs = [
             { name: 'Constructor', regex: /constructor\s*\(/g },
@@ -137,15 +102,11 @@ function analyzeContract(filePath) {
             { name: 'Reentrancy Guard', regex: /\bnonReentrant\b|\breentrant\b/g },
             { name: 'Ownable', regex: /\bonlyOwner\b|\bOwnable\b/g }
         ];
-        
         funcs.forEach(func => {
             const matches = content.match(func.regex);
             console.log(\`- \${func.name}: \${matches ? matches.length : 0} occurrences\`);
         });
-        
-        // Simple security check
         console.log('\\nSimple Security Checks:');
-        
         const checks = [
             { name: 'tx.origin usage (avoid)', regex: /\btx\.origin\b/g, safe: false },
             { name: 'selfdestruct/suicide', regex: /\bselfdestruct\b|\bsuicide\b/g, safe: false },
@@ -155,7 +116,6 @@ function analyzeContract(filePath) {
             { name: 'require statements', regex: /\brequire\s*\(/g, safe: true },
             { name: 'revert statements', regex: /\brevert\s*\(/g, safe: true }
         ];
-        
         checks.forEach(check => {
             const matches = content.match(check.regex);
             const count = matches ? matches.length : 0;
@@ -164,12 +124,10 @@ function analyzeContract(filePath) {
                 (count > 0 ? '⚠️ Caution' : '✅ Good');
             console.log(\`- \${check.name}: \${count} occurrences - \${status}\`);
         });
-        
     } catch (error) {
         console.error(\`Error analyzing contract: \${error.message}\`);
     }
 }
-
 const filePath = process.argv[2] || './contracts/SimpleToken.sol';
 analyzeContract(filePath);
 EOF
@@ -200,16 +158,41 @@ while read -r directory events filename; do
     
     {
       date +%s > "$MARKER_FILE"
-      
       log_with_timestamp "🆕 Detected Solidity contract: $filename"
-
       mkdir -p /app/contracts
       cp "/app/input/$filename" "/app/contracts/$filename"
       log_with_timestamp "📁 Copied $filename to contracts directory"
 
       contract_name=$(basename "$filename" .sol)
       contract_path="/app/contracts/$filename"
-      
+      test_file="./test/${contract_name}.t.sol"
+
+      # ==== AUTO-GENERATE TEST FILE IF MISSING ====
+      if [ ! -f "$test_file" ]; then
+        log_with_timestamp "📝 Auto-generating Foundry test file for $contract_name"
+        cat > "$test_file" <<EOF
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "forge-std/Test.sol";
+import "../contracts/${contract_name}.sol";
+
+contract ${contract_name}Test is Test {
+    ${contract_name} public contractInstance;
+
+    function setUp() public {
+        contractInstance = new ${contract_name}();
+    }
+
+    // TODO: Add more specific tests!
+    function testDeployment() public {
+        assert(address(contractInstance) != address(0));
+    }
+}
+EOF
+        log_with_timestamp "✅ Basic test file created at $test_file"
+      fi
+
       log_with_timestamp "🔨 Attempting direct Solidity compilation..."
       mkdir -p /app/artifacts
       if solc --bin --abi --optimize --overwrite -o /app/artifacts /app/contracts/$filename 2>/dev/null; then
@@ -217,23 +200,20 @@ while read -r directory events filename; do
       else
         log_with_timestamp "⚠️ Direct compilation had issues, continuing with analysis"
       fi
-      
-      if compgen -G './test/*.t.sol' > /dev/null 2>&1; then
-        log_with_timestamp "🧪 Running Foundry tests with gas reporting..."
-        if forge test --gas-report --json > ./logs/foundry/foundry-test-report.json 2>&1 | tee -a "$LOG_FILE"; then
-          log_with_timestamp "✅ Foundry tests passed with gas report"
-        else
-          log_with_timestamp "❌ Foundry tests failed - check logs/foundry/foundry-test-report.json"
-        fi
-        
-        log_with_timestamp "📊 Generating Foundry coverage report..."
-        if forge coverage --report lcov --report-file ./logs/coverage/foundry-lcov.info 2>&1 | tee -a "$LOG_FILE"; then
-          log_with_timestamp "✅ Foundry coverage report generated"
-        else
-          log_with_timestamp "⚠️ Foundry coverage generation failed"
-        fi
+
+      # ==== TAGGED LOG OUTPUTS ====
+      log_with_timestamp "🧪 Running Foundry tests with gas reporting..."
+      if forge test --gas-report --json > ./logs/foundry/${contract_name}-foundry-test-report.json 2>&1 | tee -a "$LOG_FILE"; then
+        log_with_timestamp "✅ Foundry tests passed with gas report"
       else
-        log_with_timestamp "ℹ️ No Foundry test files found, skipping forge test"
+        log_with_timestamp "❌ Foundry tests failed - check logs/foundry/${contract_name}-foundry-test-report.json"
+      fi
+
+      log_with_timestamp "📊 Generating Foundry coverage report..."
+      if forge coverage --report lcov --report-file ./logs/coverage/${contract_name}-foundry-lcov.info 2>&1 | tee -a "$LOG_FILE"; then
+        log_with_timestamp "✅ Foundry coverage report generated"
+      else
+        log_with_timestamp "⚠️ Foundry coverage generation failed"
       fi
 
       log_with_timestamp "🔍 Running simple contract analysis..."
@@ -242,7 +222,7 @@ while read -r directory events filename; do
       else
         log_with_timestamp "⚠️ Simple contract analysis failed"
       fi
-      
+
       log_with_timestamp "🛡️ Running Slither security analysis..."
       if command -v slither &> /dev/null; then
         if slither "$contract_path" --solc solc > "./logs/slither/${contract_name}-report.txt" 2>&1; then
@@ -253,12 +233,12 @@ while read -r directory events filename; do
       else
         log_with_timestamp "ℹ️ Slither not available, skipping security analysis"
       fi
-      
+
       log_with_timestamp "📏 Analyzing contract size..."
       filesize=$(stat -c%s "$contract_path")
       echo "Contract: $contract_name" > "./logs/reports/${contract_name}-size.txt"
       echo "Source size: $filesize bytes" >> "./logs/reports/${contract_name}-size.txt"
-      
+
       if [ -f "/app/artifacts/${contract_name}.bin" ]; then
         binsize=$(stat -c%s "/app/artifacts/${contract_name}.bin")
         hexsize=$((binsize / 2))
@@ -302,16 +282,8 @@ EOF
 - Security Report: \`logs/slither/${contract_name}-report.txt\`
 - Contract Analysis: \`logs/reports/${contract_name}-analysis.txt\`
 - Size Analysis: \`logs/reports/${contract_name}-size.txt\`
-EOF
-
-      if compgen -G './test/*.t.sol' > /dev/null 2>&1; then
-        cat >> "./logs/reports/test-summary-${contract_name}.md" <<EOF
-- Foundry Test Report: \`logs/foundry/foundry-test-report.json\`
-- Coverage Report: \`logs/coverage/foundry-lcov.info\`
-EOF
-      fi
-
-      cat >> "./logs/reports/test-summary-${contract_name}.md" <<EOF
+- Foundry Test Report: \`logs/foundry/${contract_name}-foundry-test-report.json\`
+- Coverage Report: \`logs/coverage/${contract_name}-foundry-lcov.info\`
 - Full Log: \`logs/evm-test.log\`
 
 ## Contract Analysis Highlights
@@ -327,7 +299,7 @@ EOF
       log_with_timestamp "=========================================="
 
       log_with_timestamp "🤖 Starting AI-enhanced aggregation..."
-      if node /app/scripts/aggregate-all-logs.js >> "$LOG_FILE" 2>&1; then
+      if node /app/scripts/aggregate-all-logs.js "$contract_name" >> "$LOG_FILE" 2>&1; then
         log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/complete-contracts-report.md"
       else
         log_with_timestamp "❌ AI-enhanced aggregation failed (see log for details)"
