@@ -327,14 +327,19 @@ run_tests_with_coverage() {
         else
             log_with_timestamp "⚠️ Anchor tests had some issues" "error"
         fi
+        # Tag coverage report
+        if [ -f "/app/logs/coverage/coverage.html" ]; then
+            mv "/app/logs/coverage/coverage.html" "/app/logs/coverage/${contract_name}-coverage.html"
+        fi
     else
-        if cargo tarpaulin --config /app/tarpaulin.toml -v; then
+        if cargo tarpaulin --config /app/tarpaulin.toml -v --out Html --output-dir /app/logs/coverage; then
             log_with_timestamp "✅ Tests and coverage completed successfully"
         else
             log_with_timestamp "⚠️ Tests or coverage generation had some issues" "error"
         fi
         if [ -f "/app/logs/coverage/tarpaulin-report.html" ]; then
-            log_with_timestamp "📊 Coverage report generated: /app/logs/coverage/tarpaulin-report.html"
+            mv "/app/logs/coverage/tarpaulin-report.html" "/app/logs/coverage/${contract_name}-tarpaulin-report.html"
+            log_with_timestamp "📊 Coverage report generated: /app/logs/coverage/${contract_name}-tarpaulin-report.html"
         else
             log_with_timestamp "❌ Failed to generate coverage report" "error"
         fi
@@ -346,12 +351,12 @@ run_security_audit() {
     log_with_timestamp "🛡️ Running security audit for $contract_name..." "security"
     cargo generate-lockfile || true
     mkdir -p "/app/logs/security"
-    if cargo audit -f /app/Cargo.lock > "/app/logs/security/cargo-audit.log" 2>&1; then
+    if cargo audit -f /app/Cargo.lock > "/app/logs/security/${contract_name}-cargo-audit.log" 2>&1; then
         log_with_timestamp "✅ Cargo audit completed successfully" "security"
     else
         log_with_timestamp "⚠️ Cargo audit found potential vulnerabilities" "security"
     fi
-    if cargo clippy --all-targets --all-features -- -D warnings > "/app/logs/security/clippy.log" 2>&1; then
+    if cargo clippy --all-targets --all-features -- -D warnings > "/app/logs/security/${contract_name}-clippy.log" 2>&1; then
         log_with_timestamp "✅ Clippy checks passed" "security"
     else
         log_with_timestamp "⚠️ Clippy found code quality issues" "security"
@@ -364,7 +369,7 @@ run_performance_analysis() {
     mkdir -p "/app/logs/benchmarks"
     log_with_timestamp "Measuring build time performance..." "performance"
     local start_time=$(date +%s)
-    if cargo build --release > "/app/logs/benchmarks/build-time.log" 2>&1; then
+    if cargo build --release > "/app/logs/benchmarks/${contract_name}-build-time.log" 2>&1; then
         local end_time=$(date +%s)
         local build_time=$((end_time - start_time))
         log_with_timestamp "✅ Release build completed in $build_time seconds" "performance"
@@ -374,6 +379,7 @@ run_performance_analysis() {
     if [ -f "/app/target/release/${contract_name}.so" ]; then
         local program_size=$(du -h "/app/target/release/${contract_name}.so" | cut -f1)
         log_with_timestamp "📊 Program size: $program_size" "performance"
+        echo "$program_size" > "/app/logs/benchmarks/${contract_name}-program-size.txt"
     fi
 }
 
@@ -401,21 +407,21 @@ generate_comprehensive_report() {
 
 ## Test Results
 EOF
-    if [ -f "/app/logs/coverage/tarpaulin-report.html" ]; then
+    if [ -f "/app/logs/coverage/${contract_name}-tarpaulin-report.html" ] || [ -f "/app/logs/coverage/${contract_name}-coverage.html" ]; then
         echo "- ✅ Tests executed successfully" >> "$report_file"
-        echo "- 📊 Coverage report available at \`/app/logs/coverage/tarpaulin-report.html\`" >> "$report_file"
+        echo "- 📊 Coverage report available at \`/app/logs/coverage/${contract_name}-tarpaulin-report.html\`" >> "$report_file"
     else
         echo "- ⚠️ Test coverage report not available" >> "$report_file"
     fi
     echo -e "\n## Security Analysis" >> "$report_file"
-    if [ -f "/app/logs/security/cargo-audit.log" ]; then
+    if [ -f "/app/logs/security/${contract_name}-cargo-audit.log" ]; then
         echo "- 🛡️ Security audit completed" >> "$report_file"
-        echo "- Details available in \`/app/logs/security/cargo-audit.log\`" >> "$report_file"
+        echo "- Details available in \`/app/logs/security/${contract_name}-cargo-audit.log\`" >> "$report_file"
     else
         echo "- ⚠️ Security audit report not available" >> "$report_file"
     fi
     echo -e "\n## Performance Analysis" >> "$report_file"
-    if [ -f "/app/logs/benchmarks/build-time.log" ]; then
+    if [ -f "/app/logs/benchmarks/${contract_name}-build-time.log" ]; then
         echo "- ⚡ Performance analysis completed" >> "$report_file"
         if [ -f "/app/target/release/${contract_name}.so" ]; then
             local program_size=$(du -h "/app/target/release/${contract_name}.so" | cut -f1)
@@ -523,7 +529,7 @@ EOF
             log_with_timestamp "🏁 Completed processing $filename"
             # Aggregate all contract reports into a unified summary
             if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
-                node /app/scripts/aggregate-all-logs.js | tee -a "$LOG_FILE"
+                node /app/scripts/aggregate-all-logs.js "$contract_name" | tee -a "$LOG_FILE"
                 log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/complete-contracts-report.md"
             fi
             log_with_timestamp "=========================================="
@@ -604,7 +610,7 @@ EOF
                     log_with_timestamp "🏁 Completed processing $filename"
                     # Aggregate all contract reports into a unified summary
                     if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
-                        node /app/scripts/aggregate-all-logs.js | tee -a "$LOG_FILE"
+                        node /app/scripts/aggregate-all-logs.js "$contract_name" | tee -a "$LOG_FILE"
                         log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/complete-contracts-report.md"
                     fi
                     log_with_timestamp "=========================================="
