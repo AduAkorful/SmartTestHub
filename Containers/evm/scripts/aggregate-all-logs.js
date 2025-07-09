@@ -1,68 +1,83 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-
-// Use Gemini 2.5 Flash model via Google API
 require('dotenv').config({ path: '/app/.env' });
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
-const reportsDir = '/app/logs/reports';
 const outputFile = '/app/logs/reports/complete-contracts-report.md';
 
-console.log("Starting aggregation...");
-
-// Check if API key is present
-if (!GEMINI_API_KEY) {
-  console.error("Error: GEMINI_API_KEY environment variable not set.");
-  process.exit(1);
+function tryRead(file, fallback = '') {
+  try {
+    return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : fallback;
+  } catch (e) {
+    return fallback;
+  }
 }
 
-// Check if reports directory exists
-if (!fs.existsSync(reportsDir)) {
-  console.error("Reports directory does not exist:", reportsDir);
-  process.exit(1);
+function tryList(dir, filter = () => true) {
+  try {
+    return fs.existsSync(dir) ? fs.readdirSync(dir).filter(filter) : [];
+  } catch (e) {
+    return [];
+  }
 }
 
-// Collect all report files
-const files = fs.readdirSync(reportsDir)
-  .filter(f => f.endsWith('.md') || f.endsWith('.txt'))
-  .map(f => path.join(reportsDir, f));
-
-if (files.length === 0) {
-  console.log("No report files found in", reportsDir);
-  fs.writeFileSync(outputFile, "# No reports found to summarize.\n");
-  console.log("Wrote fallback report to", outputFile);
-  process.exit(0);
+function section(title, content) {
+  return `\n\n## ${title}\n\n${content || '_No output found._'}`;
 }
 
-// Aggregate content
-let aggregated = '';
-for (const file of files) {
-  console.log("Reading:", file);
-  aggregated += `\n\n## File: ${path.basename(file)}\n`;
-  aggregated += fs.readFileSync(file, 'utf8');
+// Aggregate all files in a directory with a title per file
+function aggregateDir(dir, filter = () => true) {
+  return tryList(dir, filter).map(f =>
+    `### File: ${f}\n` + tryRead(path.join(dir, f))
+  ).join('\n\n');
 }
 
-console.log("Aggregated content length:", aggregated.length);
+// Collect all log and report files for EVM
+let fullLog = '';
+fullLog += section('EVM Container Procedure Log', tryRead('/app/logs/evm-test.log'));
+fullLog += section('Foundry Test Reports', aggregateDir('/app/logs/foundry', f => f.endsWith('.json') || f.endsWith('.txt')));
+fullLog += section('Foundry Coverage Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.info') || f.endsWith('.json') || f.endsWith('.txt')));
+fullLog += section('Slither Security Reports', aggregateDir('/app/logs/slither', f => f.endsWith('.txt') || f.endsWith('.json')));
+fullLog += section('AI Summaries and Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
+fullLog += section('Gas Usage Reports', aggregateDir('/app/logs/gas', () => true));
+fullLog += section('Other Logs', aggregateDir('/app/logs', f => f.endsWith('.log') && !f.includes('evm-test.log')));
+
+fullLog += section('Tool Run Confirmation', `
+The following tools' logs were aggregated:
+- Compilation: evm-test.log, artifact and error logs
+- Testing: Foundry (all files in /app/logs/foundry), coverage (all files in /app/logs/coverage)
+- Security: Slither (all files in /app/logs/slither)
+- Gas: All logs in /app/logs/gas
+- AI/Manual reports: All .md/.txt in /app/logs/reports
+If any section above says "_No output found._", that log was missing or the tool did not run.
+`);
 
 const prompt = `
-You are an expert smart contract developer and security auditor.
-Given the following smart contract analysis report, perform these tasks:
-- Organize the report into clear, logical sections (e.g., Compilation, Tests, Security, Size).
-- Rewrite the content to be clear, concise, and useful for developers.
-- For each error, warning, or failed test, provide actionable insights or suggestions to help resolve the issue.
-- For security findings, explain the risks and recommend best practices or code changes.
-- Highlight important information using bullet points or tables where helpful.
-- Ensure your summary is comprehensive but easy to read.
+You are an expert smart contract auditor.
+You are given the **raw logs and reports** from a full smart contract testing and analysis pipeline (see below).
+- Organize the output into logical sections: Compilation, Tests, Security, Coverage, Gas, and AI/Manual summaries.
+- For each tool, summarize key findings in clear, actionable language.
+- For each error, warning, or failed test, provide insights to help resolve the issue.
+- For security findings, explain risks and recommend best practices or code changes.
+- If any tool appears missing, failed, or incomplete, clearly indicate this.
+- Highlight important information with bullet points or tables.
+- Include a "Tool Run Confirmation" section stating which logs were present and included.
+- Make the summary comprehensive, structured, and developer-friendly.
 
-Report to analyze:
-${aggregated}
+Here are the complete logs and reports:
+${fullLog}
 `;
 
 async function enhanceReport() {
+  if (!GEMINI_API_KEY) {
+    console.error("Error: GEMINI_API_KEY environment variable not set.");
+    fs.writeFileSync(outputFile, "# Error: GEMINI_API_KEY not set. Cannot generate enhanced report.\n" + prompt);
+    process.exit(1);
+  }
   try {
     console.log("Sending request to Gemini 2.5 Flash endpoint...");
     const response = await axios.post(
@@ -78,27 +93,18 @@ async function enhanceReport() {
         headers: {
           "Content-Type": "application/json",
           "X-goog-api-key": GEMINI_API_KEY
-        }
+        },
+        timeout: 60000
       }
     );
-    if (
-      !response.data ||
-      !response.data.candidates ||
-      !response.data.candidates[0] ||
-      !response.data.candidates[0].content ||
-      !response.data.candidates[0].content.parts ||
-      !response.data.candidates[0].content.parts[0] ||
-      !response.data.candidates[0].content.parts[0].text
-    ) {
-      throw new Error("Malformed response from Gemini API");
-    }
-    const aiSummary = response.data.candidates[0].content.parts[0].text;
+    const aiSummary = 
+      response.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "Error: Malformed response from Gemini API.";
     fs.writeFileSync(outputFile, aiSummary);
     console.log("AI-enhanced report written to", outputFile);
   } catch (err) {
-    console.error("AI enhancement failed, writing raw report.", err?.message || err);
-    fs.writeFileSync(outputFile, aggregated);
-    console.log("Raw report written to", outputFile);
+    console.error("AI enhancement failed, writing raw logs instead.", err?.message || err);
+    fs.writeFileSync(outputFile, fullLog + "\n\n---\n\n# AI enhancement failed.\n");
   }
 }
 
