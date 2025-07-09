@@ -3,6 +3,12 @@ const path = require('path');
 const axios = require('axios');
 require('dotenv').config({ path: '/app/.env' });
 
+const contractName = process.argv[2]; // first arg is contract name
+if (!contractName) {
+  console.error("Contract name must be passed as argument to aggregate-all-logs.js");
+  process.exit(1);
+}
+
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
@@ -29,30 +35,28 @@ function section(title, content) {
   return `\n\n## ${title}\n\n${content || '_No output found._'}`;
 }
 
-// Aggregate all files in a directory with a title per file
+// Only aggregate logs for this contract
 function aggregateDir(dir, filter = () => true) {
-  return tryList(dir, filter).map(f =>
-    `### File: ${f}\n` + tryRead(path.join(dir, f))
-  ).join('\n\n');
+  return tryList(dir, f => f.startsWith(contractName) && filter(f))
+    .map(f => `### File: ${f}\n` + tryRead(path.join(dir, f)))
+    .join('\n\n');
 }
 
-// Collect all log and report files for Non-EVM
 let fullLog = '';
 fullLog += section('Non-EVM Container Procedure Log', tryRead('/app/logs/test.log'));
-fullLog += section('Security Audit (Cargo Audit)', tryRead('/app/logs/security/cargo-audit.log'));
-fullLog += section('Security Lint (Clippy)', tryRead('/app/logs/security/clippy.log'));
-fullLog += section('Coverage Reports', aggregateDir('/app/logs/coverage', () => true));
+fullLog += section('Security Audit (Cargo Audit)', aggregateDir('/app/logs/security', f => f.endsWith('-cargo-audit.log')));
+fullLog += section('Security Lint (Clippy)', aggregateDir('/app/logs/security', f => f.endsWith('-clippy.log')));
+fullLog += section('Coverage Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.html')));
 fullLog += section('Performance Benchmarks', aggregateDir('/app/logs/benchmarks', () => true));
 fullLog += section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
-fullLog += section('Other Logs', aggregateDir('/app/logs', f => f.endsWith('.log') && !f.includes('test.log')));
 
 fullLog += section('Tool Run Confirmation', `
-The following tools' logs were aggregated:
+The following tools' logs were aggregated for ${contractName}:
 - Compilation: test.log, build logs
-- Testing: test.log, coverage (all files in /app/logs/coverage)
-- Security: Cargo Audit (cargo-audit.log), Clippy (clippy.log)
-- Performance: All logs in /app/logs/benchmarks
-- AI/Manual reports: All .md/.txt in /app/logs/reports
+- Testing: test.log, coverage (all files in /app/logs/coverage starting with ${contractName})
+- Security: Cargo Audit and Clippy (all files in /app/logs/security starting with ${contractName})
+- Performance: All logs in /app/logs/benchmarks starting with ${contractName}
+- AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
 If any section above says "_No output found._", that log was missing or the tool did not run.
 `);
 
@@ -84,9 +88,7 @@ async function enhanceReport() {
       GEMINI_URL,
       {
         contents: [
-          {
-            parts: [{ text: prompt }]
-          }
+          { parts: [{ text: prompt }] }
         ]
       },
       {
