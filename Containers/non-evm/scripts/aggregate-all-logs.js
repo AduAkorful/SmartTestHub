@@ -1,51 +1,83 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-
-// Use Gemini 2.5 Flash model via Google API
 require('dotenv').config({ path: '/app/.env' });
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
-const reportsDir = '/app/logs/reports';
 const outputFile = '/app/logs/reports/complete-contracts-report.md';
 
-// Check if API key is present
-if (!GEMINI_API_KEY) {
-  console.error("Error: GEMINI_API_KEY environment variable not set.");
-  process.exit(1);
+function tryRead(file, fallback = '') {
+  try {
+    return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : fallback;
+  } catch (e) {
+    return fallback;
+  }
 }
 
-// Collect all report files
-const files = fs.readdirSync(reportsDir)
-  .filter(f => f.endsWith('.md') || f.endsWith('.txt'))
-  .map(f => path.join(reportsDir, f));
-
-// Aggregate content
-let aggregated = '';
-for (const file of files) {
-  aggregated += `\n\n## File: ${path.basename(file)}\n`;
-  aggregated += fs.readFileSync(file, 'utf8');
+function tryList(dir, filter = () => true) {
+  try {
+    return fs.existsSync(dir) ? fs.readdirSync(dir).filter(filter) : [];
+  } catch (e) {
+    return [];
+  }
 }
 
-// IMPROVED, DETAILED PROMPT
+function section(title, content) {
+  return `\n\n## ${title}\n\n${content || '_No output found._'}`;
+}
+
+// Aggregate all files in a directory with a title per file
+function aggregateDir(dir, filter = () => true) {
+  return tryList(dir, filter).map(f =>
+    `### File: ${f}\n` + tryRead(path.join(dir, f))
+  ).join('\n\n');
+}
+
+// Collect all log and report files for Non-EVM
+let fullLog = '';
+fullLog += section('Non-EVM Container Procedure Log', tryRead('/app/logs/test.log'));
+fullLog += section('Security Audit (Cargo Audit)', tryRead('/app/logs/security/cargo-audit.log'));
+fullLog += section('Security Lint (Clippy)', tryRead('/app/logs/security/clippy.log'));
+fullLog += section('Coverage Reports', aggregateDir('/app/logs/coverage', () => true));
+fullLog += section('Performance Benchmarks', aggregateDir('/app/logs/benchmarks', () => true));
+fullLog += section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
+fullLog += section('Other Logs', aggregateDir('/app/logs', f => f.endsWith('.log') && !f.includes('test.log')));
+
+fullLog += section('Tool Run Confirmation', `
+The following tools' logs were aggregated:
+- Compilation: test.log, build logs
+- Testing: test.log, coverage (all files in /app/logs/coverage)
+- Security: Cargo Audit (cargo-audit.log), Clippy (clippy.log)
+- Performance: All logs in /app/logs/benchmarks
+- AI/Manual reports: All .md/.txt in /app/logs/reports
+If any section above says "_No output found._", that log was missing or the tool did not run.
+`);
+
 const prompt = `
-You are an expert Solana smart contract developer and security auditor.
-Given the following Solana smart contract testing and analysis report, perform these tasks:
-- Organize the report into clear, logical sections (e.g., Compilation, Tests, Security, Size).
-- Rewrite the content to be clear, concise, and useful for developers.
-- For each error, warning, or failed test, provide actionable insights or suggestions to help resolve the issue.
-- For security findings, explain the risks and recommend best practices or code changes.
-- Highlight important information using bullet points or tables where helpful.
-- Ensure your summary is comprehensive but easy to read.
+You are an expert smart contract auditor (Solana/Rust context).
+You are given the **raw logs and reports** from a full smart contract testing and analysis pipeline (see below).
+- Organize the output into logical sections: Compilation, Tests, Security, Coverage, Performance, AI/Manual summaries.
+- For each tool, summarize key findings in clear, actionable language.
+- For each error, warning, or failed test, provide insights to help resolve the issue.
+- For security findings, explain risks and recommend best practices or code changes.
+- If any tool appears missing, failed, or incomplete, clearly indicate this.
+- Highlight important information with bullet points or tables.
+- Include a "Tool Run Confirmation" section stating which logs were present and included.
+- Make the summary comprehensive, structured, and developer-friendly.
 
-Report to analyze:
-${aggregated}
+Here are the complete logs and reports:
+${fullLog}
 `;
 
 async function enhanceReport() {
+  if (!GEMINI_API_KEY) {
+    console.error("Error: GEMINI_API_KEY environment variable not set.");
+    fs.writeFileSync(outputFile, "# Error: GEMINI_API_KEY not set. Cannot generate enhanced report.\n" + prompt);
+    process.exit(1);
+  }
   try {
     console.log("Sending request to Gemini 2.5 Flash endpoint...");
     const response = await axios.post(
@@ -61,26 +93,18 @@ async function enhanceReport() {
         headers: {
           "Content-Type": "application/json",
           "X-goog-api-key": GEMINI_API_KEY
-        }
+        },
+        timeout: 60000
       }
     );
-    if (
-      !response.data ||
-      !response.data.candidates ||
-      !response.data.candidates[0] ||
-      !response.data.candidates[0].content ||
-      !response.data.candidates[0].content.parts ||
-      !response.data.candidates[0].content.parts[0] ||
-      !response.data.candidates[0].content.parts[0].text
-    ) {
-      throw new Error("Malformed response from Gemini API");
-    }
-    const aiSummary = response.data.candidates[0].content.parts[0].text;
+    const aiSummary =
+      response.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "Error: Malformed response from Gemini API.";
     fs.writeFileSync(outputFile, aiSummary);
     console.log("AI-enhanced report written to", outputFile);
   } catch (err) {
-    console.error("AI enhancement failed, writing raw report.", (err && err.message) ? err.message : err);
-    fs.writeFileSync(outputFile, aggregated);
+    console.error("AI enhancement failed, writing raw logs instead.", err?.message || err);
+    fs.writeFileSync(outputFile, fullLog + "\n\n---\n\n# AI enhancement failed.\n");
   }
 }
 
