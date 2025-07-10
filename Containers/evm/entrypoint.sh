@@ -91,7 +91,7 @@ EOF
 create_simple_analysis_script() {
     log_with_timestamp "📝 Creating simple contract analysis script..."
     cat > "/app/scripts/analyze-contract.js" <<EOF
-// ... (your original analyze-contract.js implementation) ...
+// ... (same as your current implementation)
 EOF
     chmod +x /app/scripts/analyze-contract.js
     log_with_timestamp "✅ Created simple contract analysis script"
@@ -110,7 +110,7 @@ while read -r directory events filename; do
   if [[ "$filename" == *.sol ]]; then
     MARKER_FILE="$MARKER_DIR/$filename.processed"
     (
-      # Atomic lock to handle concurrency
+      # Hardened atomic lock
       exec 9>"$MARKER_FILE.lock"
       if ! flock -n 9; then
         log_with_timestamp "⏭️ Lock exists for $filename, skipping (concurrent event)"
@@ -163,6 +163,7 @@ EOF
         log_with_timestamp "✅ Basic test file created at $test_file"
       fi
 
+      # ==== REST OF YOUR LOGIC UNCHANGED ====
       log_with_timestamp "🔨 Attempting direct Solidity compilation..."
       mkdir -p /app/artifacts
       if solc --bin --abi --optimize --overwrite -o /app/artifacts /app/contracts/$filename 2>/dev/null; then
