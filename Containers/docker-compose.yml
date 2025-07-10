@@ -34,6 +34,8 @@ services:
     volumes:
       - shared_input:/app/input
       - shared_logs_non_evm:/app/logs
+      - non_evm_target_cache:/app/target
+      - non_evm_cargo_cache:/root/.cargo
     tty: true
     stdin_open: true
     restart: unless-stopped
@@ -86,6 +88,8 @@ volumes:
   shared_input:
   shared_logs_evm:
   shared_logs_non_evm:
+  non_evm_target_cache:
+  non_evm_cargo_cache:
 
 networks:
   smarthub-network:
