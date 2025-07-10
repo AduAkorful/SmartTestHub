@@ -300,7 +300,7 @@ EOF
 
       log_with_timestamp "🤖 Starting AI-enhanced aggregation..."
       if node /app/scripts/aggregate-all-logs.js "$contract_name" >> "$LOG_FILE" 2>&1; then
-        log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/complete-contracts-report.md"
+        log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.md"
       else
         log_with_timestamp "❌ AI-enhanced aggregation failed (see log for details)"
       fi
