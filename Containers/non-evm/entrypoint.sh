@@ -530,7 +530,7 @@ EOF
             # Aggregate all contract reports into a unified summary
             if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
                 node /app/scripts/aggregate-all-logs.js "$contract_name" | tee -a "$LOG_FILE"
-                log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/complete-contracts-report.md"
+                log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.md"
             fi
             log_with_timestamp "=========================================="
         } 2>&1
@@ -611,7 +611,7 @@ EOF
                     # Aggregate all contract reports into a unified summary
                     if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
                         node /app/scripts/aggregate-all-logs.js "$contract_name" | tee -a "$LOG_FILE"
-                        log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/complete-contracts-report.md"
+                        log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.md"
                     fi
                     log_with_timestamp "=========================================="
                     touch "/app/processed/$filename"
