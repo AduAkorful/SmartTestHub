@@ -38,66 +38,83 @@ log_with_timestamp() {
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
-MARKER_DIR="/app/.processed"
-mkdir -p "$MARKER_DIR"
-
-generate_tarpaulin_config() {
-    if [ ! -f "/app/tarpaulin.toml" ]; then
-        log_with_timestamp "📊 Generating tarpaulin.toml configuration file..."
-        cat > "/app/tarpaulin.toml" <<EOF
-[all]
-timeout = "300s"
-debug = false
-follow-exec = true
-verbose = true
-workspace = true
-out = ["Html", "Xml"]
-output-dir = "/app/logs/coverage"
-exclude-files = [
-    "tests/*",
-    "*/build/*", 
-    "*/dist/*"
-]
-ignore-tests = true
-EOF
-        log_with_timestamp "✅ Created tarpaulin.toml"
+# Detect contract type: returns "solana" for Solana/Anchor, "ink" for ink!, "unknown" otherwise
+detect_contract_type() {
+    if grep -q "ink_lang" /app/src/lib.rs || grep -q "#\[ink" /app/src/lib.rs; then
+        echo "ink"
+    elif grep -q "anchor_lang" /app/src/lib.rs || grep -q "solana_program" /app/src/lib.rs; then
+        echo "solana"
+    else
+        echo "unknown"
     fi
 }
 
-# ... (rest of your setup and function definitions unchanged) ...
+generate_dynamic_cargo_toml() {
+    # Always use pre-cached base for best cache hit
+    cp /app/base-Cargo.toml /app/Cargo.toml
+    cp /app/base-Cargo.lock /app/Cargo.lock
+    # Optionally, add per-contract dependencies here if needed
+}
 
-watch_dir="/app/input"
-project_dir="/app"
-
-log_with_timestamp "🚀 Starting Enhanced Non-EVM (Solana) Container..."
-log_with_timestamp "📡 Watching for smart contract files in $watch_dir..."
-log_with_timestamp "🔧 Environment: ${RUST_LOG:-info} log level"
-
-mkdir -p "$watch_dir"
-
-echo "Setting up directory watch on $watch_dir..."
-inotifywait -m -e close_write,moved_to,create "$watch_dir" 2>/dev/null | 
-while read -r directory events filename; do
-    if [[ "$filename" == *.rs ]]; then
-        MARKER_FILE="$MARKER_DIR/$filename.processed"
-        (
-          exec 9>"$MARKER_FILE.lock"
-          if ! flock -n 9; then
-              log_with_timestamp "⏭️ Lock exists for $filename, skipping (concurrent event)"
-              continue
-          fi
-
-          if [ -f "$MARKER_FILE" ]; then
-              LAST_PROCESSED=$(cat "$MARKER_FILE")
-              CURRENT_TIME=$(date +%s)
-              if (( $CURRENT_TIME - $LAST_PROCESSED < 30 )); then
-                  log_with_timestamp "⏭️ Skipping duplicate processing of $filename (processed ${LAST_PROCESSED}s ago)"
-                  continue
-              fi
-          fi
-          date +%s > "$MARKER_FILE"
-
-          # ... (the rest of your contract processing logic here, unchanged) ...
-        )
+main_pipeline() {
+    contract_type=$(detect_contract_type)
+    if [ "$contract_type" = "ink" ]; then
+        log_with_timestamp "❌ ink! contracts are not supported in this pipeline." "error"
+        exit 1
+    elif [ "$contract_type" = "solana" ]; then
+        log_with_timestamp "Detected Solana/Anchor contract."
+        generate_dynamic_cargo_toml
+    else
+        log_with_timestamp "❌ Unknown contract type. Exiting." "error"
+        exit 1
     fi
-done
+
+    log_with_timestamp "Running cargo build..."
+    cargo build --release 2>&1 | tee -a "$LOG_FILE"
+
+    log_with_timestamp "Running cargo test..."
+    cargo test 2>&1 | tee -a "$LOG_FILE"
+
+    log_with_timestamp "Running cargo tarpaulin for coverage..."
+    cargo tarpaulin --out Html --out Json --out Xml --out Lcov --timeout 120 2>&1 | tee -a "$LOG_FILE"
+
+    log_with_timestamp "Running cargo audit for security..."
+    cargo audit 2>&1 | tee -a "$SECURITY_LOG"
+
+    log_with_timestamp "Running cargo clippy for linting..."
+    cargo clippy --all-targets --all-features -- -D warnings 2>&1 | tee -a "$SECURITY_LOG"
+}
+
+# === Duplicate prevention mechanism (atomic marker + lock) ===
+MARKER_DIR="/app/.processed"
+mkdir -p "$MARKER_DIR"
+
+WATCH_FILE="/app/src/lib.rs"
+MARKER_FILE="$MARKER_DIR/$(basename "$WATCH_FILE").processed"
+
+if [ -f "$WATCH_FILE" ]; then
+    (
+        exec 9>"$MARKER_FILE.lock"
+        if ! flock -n 9; then
+            log_with_timestamp "⏭️ Lock exists for $WATCH_FILE, skipping (concurrent event)"
+            exit 0
+        fi
+
+        if [ -f "$MARKER_FILE" ]; then
+            LAST_PROCESSED=$(cat "$MARKER_FILE")
+            CURRENT_TIME=$(date +%s)
+            if (( $CURRENT_TIME - $LAST_PROCESSED < 30 )); then
+                log_with_timestamp "⏭️ Skipping duplicate processing of $WATCH_FILE (processed ${LAST_PROCESSED}s ago)"
+                exit 0
+            fi
+        fi
+        date +%s > "$MARKER_FILE"
+
+        log_with_timestamp "🚀 Starting analysis pipeline for $WATCH_FILE"
+        main_pipeline "$@"
+        log_with_timestamp "🏁 Finished analysis pipeline for $WATCH_FILE"
+    )
+else
+    log_with_timestamp "❌ No /app/src/lib.rs contract found. Exiting." "error"
+    exit 1
+fi
