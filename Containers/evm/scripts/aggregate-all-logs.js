@@ -13,7 +13,8 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
-const outputFile = '/app/logs/reports/complete-contracts-report.md';
+// CHANGE: output file
+const outputFile = `/app/logs/reports/${contractName}-report.md`;
 
 function tryRead(file, fallback = '') {
   try {
@@ -102,7 +103,7 @@ async function enhanceReport() {
       response.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
       "Error: Malformed response from Gemini API.";
     fs.writeFileSync(outputFile, aiSummary);
-    console.log("AI-enhanced report written to", outputFile);
+    console.log(`AI-enhanced report written to ${outputFile}`);
   } catch (err) {
     console.error("AI enhancement failed, writing raw logs instead.", err?.message || err);
     fs.writeFileSync(outputFile, fullLog + "\n\n---\n\n# AI enhancement failed.\n");
