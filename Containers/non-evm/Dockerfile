@@ -32,6 +32,7 @@ RUN pip install aws-xray-sdk
 
 WORKDIR /app
 COPY . /app
+RUN rm -f /app/Cargo.lock
 
 # Make entrypoint script executable if present
 RUN chmod +x /app/entrypoint.sh || true
