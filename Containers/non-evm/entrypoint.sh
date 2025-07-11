@@ -38,21 +38,6 @@ log_with_timestamp() {
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
-# Ensures /app/base-Cargo.lock exists, generating it from base-Cargo.toml if needed
-ensure_base_cargo_lock() {
-    if [ ! -f /app/base-Cargo.lock ]; then
-        log_with_timestamp "🔄 base-Cargo.lock not found, generating from base-Cargo.toml..."
-        tmpdir=$(mktemp -d)
-        cp /app/base-Cargo.toml "$tmpdir/Cargo.toml"
-        pushd "$tmpdir" > /dev/null
-        cargo generate-lockfile || { log_with_timestamp "❌ Failed to generate Cargo.lock" "error"; popd > /dev/null; rm -rf "$tmpdir"; exit 1; }
-        cp Cargo.lock /app/base-Cargo.lock
-        popd > /dev/null
-        rm -rf "$tmpdir"
-        log_with_timestamp "✅ base-Cargo.lock generated."
-    fi
-}
-
 # Detect contract type: returns "solana" for Solana/Anchor, "ink" for ink!, "unknown" otherwise
 detect_contract_type() {
     if grep -q "ink_lang" /app/src/lib.rs || grep -q "#\[ink" /app/src/lib.rs; then
@@ -64,13 +49,6 @@ detect_contract_type() {
     fi
 }
 
-generate_dynamic_cargo_toml() {
-    # Always use pre-cached base for best cache hit
-    cp /app/base-Cargo.toml /app/Cargo.toml
-    cp /app/base-Cargo.lock /app/Cargo.lock
-    # Optionally, add per-contract dependencies here if needed
-}
-
 main_pipeline() {
     contract_type=$(detect_contract_type)
     if [ "$contract_type" = "ink" ]; then
@@ -78,8 +56,6 @@ main_pipeline() {
         exit 1
     elif [ "$contract_type" = "solana" ]; then
         log_with_timestamp "Detected Solana/Anchor contract."
-        ensure_base_cargo_lock
-        generate_dynamic_cargo_toml
     else
         log_with_timestamp "❌ Unknown contract type. Exiting." "error"
         exit 1
