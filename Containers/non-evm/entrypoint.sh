@@ -38,6 +38,21 @@ log_with_timestamp() {
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
+# Ensures /app/base-Cargo.lock exists, generating it from base-Cargo.toml if needed
+ensure_base_cargo_lock() {
+    if [ ! -f /app/base-Cargo.lock ]; then
+        log_with_timestamp "🔄 base-Cargo.lock not found, generating from base-Cargo.toml..."
+        tmpdir=$(mktemp -d)
+        cp /app/base-Cargo.toml "$tmpdir/Cargo.toml"
+        pushd "$tmpdir" > /dev/null
+        cargo generate-lockfile || { log_with_timestamp "❌ Failed to generate Cargo.lock" "error"; popd > /dev/null; rm -rf "$tmpdir"; exit 1; }
+        cp Cargo.lock /app/base-Cargo.lock
+        popd > /dev/null
+        rm -rf "$tmpdir"
+        log_with_timestamp "✅ base-Cargo.lock generated."
+    fi
+}
+
 # Detect contract type: returns "solana" for Solana/Anchor, "ink" for ink!, "unknown" otherwise
 detect_contract_type() {
     if grep -q "ink_lang" /app/src/lib.rs || grep -q "#\[ink" /app/src/lib.rs; then
@@ -63,6 +78,7 @@ main_pipeline() {
         exit 1
     elif [ "$contract_type" = "solana" ]; then
         log_with_timestamp "Detected Solana/Anchor contract."
+        ensure_base_cargo_lock
         generate_dynamic_cargo_toml
     else
         log_with_timestamp "❌ Unknown contract type. Exiting." "error"
@@ -102,10 +118,15 @@ if [ -f "$WATCH_FILE" ]; then
 
         if [ -f "$MARKER_FILE" ]; then
             LAST_PROCESSED=$(cat "$MARKER_FILE")
-            CURRENT_TIME=$(date +%s)
-            if (( $CURRENT_TIME - $LAST_PROCESSED < 30 )); then
-                log_with_timestamp "⏭️ Skipping duplicate processing of $WATCH_FILE (processed ${LAST_PROCESSED}s ago)"
-                exit 0
+            # Extra safety check: ignore marker file if timestamp is not plausible
+            if [[ "$LAST_PROCESSED" =~ ^[0-9]+$ ]] && [ "$LAST_PROCESSED" -gt 1700000000 ] && [ "$LAST_PROCESSED" -lt 4102444800 ]; then
+                CURRENT_TIME=$(date +%s)
+                if (( $CURRENT_TIME - $LAST_PROCESSED < 30 )); then
+                    log_with_timestamp "⏭️ Skipping duplicate processing of $WATCH_FILE (processed ${LAST_PROCESSED}s ago)"
+                    exit 0
+                fi
+            else
+                log_with_timestamp "⚠️ Ignoring invalid or poisoned marker file for $WATCH_FILE (found: '$LAST_PROCESSED')" "warning"
             fi
         fi
         date +%s > "$MARKER_FILE"
