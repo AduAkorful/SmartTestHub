@@ -7,10 +7,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nodejs npm yarn \
     && rm -rf /var/lib/apt/lists/*
 
-# REMOVE: Node upload server dependencies (Express/Multer) and upload-server.js
-# RUN npm install -g express@4.19.2 multer@1.4.5-lts.1
-# COPY upload-server.js ./
-
 # Install Rust 1.85.0 (overrides Solana image's Rust)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.85.0
 ENV PATH="/root/.cargo/bin:${PATH}"
@@ -39,8 +35,6 @@ COPY . /app
 
 # Make entrypoint script executable if present
 RUN chmod +x /app/entrypoint.sh || true
-
-# Update entrypoint to only launch main script (no node upload server)
 RUN echo '#!/bin/bash\n\
 exec /app/entrypoint.sh "$@"' > /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
 
