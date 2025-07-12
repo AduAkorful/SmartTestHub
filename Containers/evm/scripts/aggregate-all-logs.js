@@ -3,7 +3,7 @@ const path = require('path');
 const axios = require('axios');
 require('dotenv').config({ path: '/app/.env' });
 
-const contractName = process.argv[2]; // first arg is contract name
+const contractName = process.argv[2];
 if (!contractName) {
   console.error("Contract name must be passed as argument to aggregate-all-logs.js");
   process.exit(1);
@@ -13,7 +13,6 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
-// CHANGE: output file
 const outputFile = `/app/logs/reports/${contractName}-report.md`;
 
 function tryRead(file, fallback = '') {
@@ -36,9 +35,8 @@ function section(title, content) {
   return `\n\n## ${title}\n\n${content || '_No output found._'}`;
 }
 
-// Only aggregate logs for this contract
 function aggregateDir(dir, filter = () => true) {
-  return tryList(dir, f => f.startsWith(contractName) && filter(f))
+  return tryList(dir, f => (f === `${contractName}-report.md` || f.startsWith(`${contractName}-`)) && filter(f))
     .map(f => `### File: ${f}\n` + tryRead(path.join(dir, f)))
     .join('\n\n');
 }
@@ -99,7 +97,7 @@ async function enhanceReport() {
         timeout: 60000
       }
     );
-    const aiSummary = 
+    const aiSummary =
       response.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
       "Error: Malformed response from Gemini API.";
     fs.writeFileSync(outputFile, aiSummary);
