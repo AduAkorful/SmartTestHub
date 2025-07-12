@@ -1,9 +1,9 @@
 [package]
-name = "placeholder_contract"
+name = "{contract_name}"
 version = "0.1.0"
 edition = "2021"
 authors = ["SmartTestHub"]
-description = "Placeholder Solana smart contract for testing"
+description = "User-uploaded Solana smart contract for testing"
 license = "MIT"
 repository = "https://github.com/your-org/smart-test-hub"
 keywords = ["solana", "blockchain", "smart-contract"]
@@ -32,7 +32,7 @@ assert_matches = "1.5"
 proptest = "1.4.0"
 
 [lib]
-name = "placeholder_contract"
+name = "{contract_name}"
 path = "src/lib.rs"
 crate-type = ["cdylib", "lib"]
 
