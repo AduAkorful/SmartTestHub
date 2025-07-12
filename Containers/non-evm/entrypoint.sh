@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+# Wait indefinitely for contract files to appear
+while [[ ! -f "/app/Cargo.toml" || ! -f "/app/src/lib.rs" ]]; do
+  echo "⏳ Waiting for contract files: /app/Cargo.toml and /app/src/lib.rs ..."
+  sleep 2
+done
+
 chmod +x "$0" || true
 
 LOG_FILE="/app/logs/test.log"
