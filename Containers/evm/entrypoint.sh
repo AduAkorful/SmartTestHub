@@ -27,14 +27,12 @@ log_with_timestamp() {
 }
 
 sanitize_solidity_name() {
-    # Remove invalid chars, replace spaces/parens, handle reserved words
     local raw="$1"
-    local sanitized="${raw//[^a-zA-Z0-9_]/_}"   # Non-alphanum to _
-    sanitized="${sanitized//__/_}"              # Collapse double underscores
-    sanitized="${sanitized#_}"                  # No leading _
-    sanitized="${sanitized%_}"                  # No trailing _
-    [[ "$sanitized" =~ ^[0-9] ]] && sanitized="_$sanitized" # No leading digit
-    # Avoid reserved keywords (add 'C' suffix if needed)
+    local sanitized="${raw//[^a-zA-Z0-9_]/_}"
+    sanitized="${sanitized//__/_}"
+    sanitized="${sanitized#_}"
+    sanitized="${sanitized%_}"
+    [[ "$sanitized" =~ ^[0-9] ]] && sanitized="_$sanitized"
     case "$sanitized" in
       storage|mapping|function|contract|address|enum|struct|event|modifier|constant)
         sanitized="${sanitized}C"
@@ -71,7 +69,7 @@ module.exports = {
 EOF
     ln -sf "/app/hardhat.config.js" "/app/config/hardhat.config.js"
     log_with_timestamp "✅ Created simplified Hardhat configuration"
-    
+
     cat > "/app/config/slither.config.json" <<EOF
 {
   "detectors_to_exclude": [],
@@ -91,7 +89,8 @@ EOF
 create_simple_analysis_script() {
     log_with_timestamp "📝 Creating simple contract analysis script..."
     cat > "/app/scripts/analyze-contract.js" <<EOF
-// ... (same as your current implementation)
+// Simple stub analysis script
+console.log("Analysis script placeholder");
 EOF
     chmod +x /app/scripts/analyze-contract.js
     log_with_timestamp "✅ Created simple contract analysis script"
@@ -110,7 +109,6 @@ while read -r directory events filename; do
   if [[ "$filename" == *.sol ]]; then
     MARKER_FILE="$MARKER_DIR/$filename.processed"
     (
-      # Hardened atomic lock
       exec 9>"$MARKER_FILE.lock"
       if ! flock -n 9; then
         log_with_timestamp "⏭️ Lock exists for $filename, skipping (concurrent event)"
@@ -125,7 +123,7 @@ while read -r directory events filename; do
               continue
           fi
       fi
-      
+
       date +%s > "$MARKER_FILE"
       log_with_timestamp "🆕 Detected Solidity contract: $filename"
       mkdir -p /app/contracts
@@ -137,7 +135,12 @@ while read -r directory events filename; do
       contract_path="/app/contracts/$filename"
       test_file="./test/${sanitized_name}.t.sol"
 
-      # ==== AUTO-GENERATE TEST FILE IF MISSING ====
+      # --- CLEANUP: Remove old logs for this contract before analysis ---
+      find /app/logs/foundry -type f -name "${sanitized_name}*" -delete
+      find /app/logs/coverage -type f -name "${sanitized_name}*" -delete
+      find /app/logs/slither -type f -name "${sanitized_name}*" -delete
+      find /app/logs/reports -type f -name "${sanitized_name}*" -delete
+
       if [ ! -f "$test_file" ]; then
         log_with_timestamp "📝 Auto-generating Foundry test file for $sanitized_name"
         cat > "$test_file" <<EOF
@@ -154,7 +157,6 @@ contract ${sanitized_name}Test is Test {
         contractInstance = new ${sanitized_name}();
     }
 
-    // TODO: Add more specific tests!
     function testDeployment() public {
         assert(address(contractInstance) != address(0));
     }
@@ -163,7 +165,6 @@ EOF
         log_with_timestamp "✅ Basic test file created at $test_file"
       fi
 
-      # ==== REST OF YOUR LOGIC UNCHANGED ====
       log_with_timestamp "🔨 Attempting direct Solidity compilation..."
       mkdir -p /app/artifacts
       if solc --bin --abi --optimize --overwrite -o /app/artifacts /app/contracts/$filename 2>/dev/null; then
@@ -276,6 +277,6 @@ EOF
       fi
       log_with_timestamp "=========================================="
 
-    )  # end atomic block
+    )
   fi
 done
