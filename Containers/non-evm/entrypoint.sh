@@ -143,7 +143,6 @@ create_test_files() {
     local project_type="$2"
     log_with_timestamp "🧪 Creating test files for $contract_name ($project_type)..."
     mkdir -p "/app/tests"
-    # Just a basic placeholder generator; expand as needed
     cat > "/app/tests/test_${contract_name}.rs" <<EOF
 #[cfg(test)]
 mod tests {
@@ -160,7 +159,6 @@ run_tests_with_coverage() {
     local contract_name="$1"
     log_with_timestamp "🧪 Running tests with coverage for $contract_name..."
     mkdir -p "/app/logs/coverage"
-    # run all tests, then coverage
     if cargo test --all-features --all-targets | tee -a "$LOG_FILE"; then
         log_with_timestamp "✅ Unit and integration tests passed"
     else
@@ -317,16 +315,19 @@ while read -r directory events filename; do
             cp "/app/input/$filename" "/app/src/lib.rs"
             log_with_timestamp "📁 Copied $filename to /app/src/lib.rs"
 
-            # Generate Cargo.toml from template
+            # --- CLEANUP: Remove old logs for this contract before analysis ---
+            find /app/logs/coverage -type f -name "${contract_name}*" -delete
+            find /app/logs/security -type f -name "${contract_name}*" -delete
+            find /app/logs/benchmarks -type f -name "${contract_name}*" -delete
+            find /app/logs/reports -type f -name "${contract_name}*" -delete
+
             generate_cargo_toml_from_template "$contract_name" || continue
 
-            # Detect project type (for reporting)
             project_type=$(detect_project_type "/app/src/lib.rs")
             log_with_timestamp "🔍 Detected project type: $project_type"
 
             create_test_files "$contract_name" "$project_type"
 
-            # --- Build ---
             if cargo build 2>&1 | tee -a "$LOG_FILE"; then
                 log_with_timestamp "✅ Build successful"
             else
@@ -334,20 +335,14 @@ while read -r directory events filename; do
                 continue
             fi
 
-            # --- Run all tests and generate coverage ---
             run_tests_with_coverage "$contract_name"
-
-            # --- Security ---
             run_security_audit "$contract_name"
-
-            # --- Performance ---
             run_performance_analysis "$contract_name"
 
             end_time=$(date +%s)
             generate_comprehensive_report "$contract_name" "$project_type" "$start_time" "$end_time"
             log_with_timestamp "🏁 Completed processing $filename"
 
-            # AI-enhanced report
             if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
                 node /app/scripts/aggregate-all-logs.js "$contract_name" | tee -a "$LOG_FILE"
                 log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.md"
