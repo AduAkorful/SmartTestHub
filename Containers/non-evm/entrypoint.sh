@@ -38,7 +38,32 @@ log_with_timestamp() {
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
-# Detect contract type: returns "solana" for Solana/Anchor, "ink" for ink!, "unknown" otherwise
+# === Manifest Generation ===
+# CONTRACT_NAME must be set (default: "user_contract")
+CONTRACT_NAME="${CONTRACT_NAME:-user_contract}"
+
+if [ ! -f /app/Cargo.toml.template ]; then
+    log_with_timestamp "❌ Cargo.toml.template is missing in /app. Exiting." "error"
+    exit 1
+fi
+
+# Clean up old files/artifacts
+rm -f /app/Cargo.toml
+rm -f /app/Cargo.lock
+rm -rf /app/target
+
+# Generate Cargo.toml from template
+sed "s/{contract_name}/$CONTRACT_NAME/g" /app/Cargo.toml.template > /app/Cargo.toml
+log_with_timestamp "Generated Cargo.toml for contract: $CONTRACT_NAME"
+
+# === Check for contract file ===
+if [ ! -f "/app/src/lib.rs" ]; then
+    log_with_timestamp "❌ No /app/src/lib.rs contract found. Exiting." "error"
+    exit 1
+fi
+
+# === Main Analysis Pipeline ===
+
 detect_contract_type() {
     if grep -q "ink_lang" /app/src/lib.rs || grep -q "#\[ink" /app/src/lib.rs; then
         echo "ink"
