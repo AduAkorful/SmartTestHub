@@ -42,7 +42,7 @@ function aggregateDir(dir, filter = () => true) {
 }
 
 let fullLog = '';
-fullLog += section('Non-EVM Container Procedure Log', tryRead('/app/logs/test.log'));
+fullLog += section('Non-EVM Container Procedure Log', tryRead(`/app/logs/${contractName}-test.log`));
 fullLog += section('Security Audit (Cargo Audit)', aggregateDir('/app/logs/security', f => f.endsWith('-cargo-audit.log')));
 fullLog += section('Security Lint (Clippy)', aggregateDir('/app/logs/security', f => f.endsWith('-clippy.log')));
 fullLog += section('Coverage Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.html')));
@@ -51,8 +51,8 @@ fullLog += section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f
 
 fullLog += section('Tool Run Confirmation', `
 The following tools' logs were aggregated for ${contractName}:
-- Compilation: test.log, build logs
-- Testing: test.log, coverage (all files in /app/logs/coverage starting with ${contractName})
+- Compilation: ${contractName}-test.log, build logs
+- Testing: ${contractName}-test.log, coverage (all files in /app/logs/coverage starting with ${contractName})
 - Security: Cargo Audit and Clippy (all files in /app/logs/security starting with ${contractName})
 - Performance: All logs in /app/logs/benchmarks starting with ${contractName}
 - AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
