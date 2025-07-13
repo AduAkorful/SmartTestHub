@@ -1,21 +1,18 @@
 #!/bin/bash
 set -e
 
-LOG_FILE="/app/logs/test.log"
-ERROR_LOG="/app/logs/error.log"
-SECURITY_LOG="/app/logs/security/security-audit.log"
-PERFORMANCE_LOG="/app/logs/analysis/performance.log"
-XRAY_LOG="/app/logs/xray/xray.log"
-
 mkdir -p /app/input /app/logs /app/logs/security /app/logs/analysis /app/logs/xray /app/logs/coverage /app/logs/reports /app/logs/benchmarks /app/.processed /app/src
 
-: > "$LOG_FILE"
-: > "$ERROR_LOG"
-
 log_with_timestamp() {
-    local message="$1"
-    local log_type="${2:-info}"
+    local contract_name="$1"
+    local message="$2"
+    local log_type="${3:-info}"
     local timestamp="[$(date '+%Y-%m-%d %H:%M:%S')]"
+    local LOG_FILE="/app/logs/${contract_name}-test.log"
+    local ERROR_LOG="/app/logs/${contract_name}-error.log"
+    local SECURITY_LOG="/app/logs/security/${contract_name}-security-audit.log"
+    local PERFORMANCE_LOG="/app/logs/analysis/${contract_name}-performance.log"
+    local XRAY_LOG="/app/logs/xray/${contract_name}-xray.log"
     case $log_type in
         "error") echo "$timestamp ❌ $message" | tee -a "$LOG_FILE" "$ERROR_LOG" ;;
         "security") echo "$timestamp 🛡️ $message" | tee -a "$LOG_FILE" "$SECURITY_LOG" ;;
@@ -27,35 +24,8 @@ log_with_timestamp() {
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
-start_xray_daemon() {
-    log_with_timestamp "📡 Setting up AWS X-Ray daemon..." "xray"
-    command -v xray > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        log_with_timestamp "📡 Found X-Ray daemon at $(which xray)" "xray"
-        export AWS_REGION="us-east-1"
-        log_with_timestamp "📡 Setting AWS_REGION to $AWS_REGION" "xray"
-        if [ -f "/app/config/xray-config.json" ]; then
-            log_with_timestamp "📡 Starting X-Ray daemon with custom config in local mode..." "xray"
-            nohup xray -c /app/config/xray-config.json -l -o > "$XRAY_LOG" 2>&1 &
-        else
-            log_with_timestamp "📡 Starting X-Ray daemon with default config in local mode..." "xray"
-            nohup xray -l -o > "$XRAY_LOG" 2>&1 &
-        fi
-        sleep 2
-        if pgrep xray > /dev/null; then
-            log_with_timestamp "✅ X-Ray daemon started successfully" "xray"
-        else
-            log_with_timestamp "❌ Failed to start X-Ray daemon: $(cat $XRAY_LOG | tail -10)" "error"
-            log_with_timestamp "⚠️ Continuing without X-Ray daemon" "xray"
-        fi
-    else
-        log_with_timestamp "⚠️ X-Ray daemon not found in PATH" "xray"
-    fi
-}
-
 generate_tarpaulin_config() {
     if [ ! -f "/app/tarpaulin.toml" ]; then
-        log_with_timestamp "📊 Generating tarpaulin.toml configuration file..."
         cat > "/app/tarpaulin.toml" <<EOF
 [all]
 timeout = "300s"
@@ -72,46 +42,42 @@ exclude-files = [
 ]
 ignore-tests = true
 EOF
-        log_with_timestamp "✅ Created tarpaulin.toml"
     fi
 }
 
 setup_solana_environment() {
-    log_with_timestamp "🔧 Setting up Solana environment..."
-    log_with_timestamp "Current PATH: $PATH"
+    local contract_name="$1"
+    log_with_timestamp "$contract_name" "🔧 Setting up Solana environment..."
     if ! command_exists solana; then
-        log_with_timestamp "❌ Solana CLI not found in PATH. Please rebuild the Docker image to include the Solana CLI." "error"
+        log_with_timestamp "$contract_name" "❌ Solana CLI not found in PATH. Please rebuild the Docker image to include the Solana CLI." "error"
         return 1
     fi
     if [ ! -f ~/.config/solana/id.json ]; then
-        log_with_timestamp "🔑 Generating new Solana keypair..."
+        log_with_timestamp "$contract_name" "🔑 Generating new Solana keypair..."
         mkdir -p ~/.config/solana
         if solana-keygen new --no-bip39-passphrase --silent --outfile ~/.config/solana/id.json; then
-            log_with_timestamp "✅ Solana keypair generated"
+            log_with_timestamp "$contract_name" "✅ Solana keypair generated"
         else
-            log_with_timestamp "❌ Failed to generate Solana keypair" "error"
+            log_with_timestamp "$contract_name" "❌ Failed to generate Solana keypair" "error"
             return 1
         fi
     fi
     local solana_url="${SOLANA_URL:-https://api.devnet.solana.com}"
     if solana config set --url "$solana_url" --keypair ~/.config/solana/id.json; then
-        log_with_timestamp "✅ Solana config set successfully"
+        log_with_timestamp "$contract_name" "✅ Solana config set successfully"
     else
-        log_with_timestamp "❌ Failed to set Solana config" "error"
+        log_with_timestamp "$contract_name" "❌ Failed to set Solana config" "error"
         return 1
     fi
     if solana config get >/dev/null 2>&1; then
-        log_with_timestamp "✅ Solana CLI configured successfully"
-        solana config get | while read -r line; do
-            log_with_timestamp "   $line"
-        done
+        log_with_timestamp "$contract_name" "✅ Solana CLI configured successfully"
     else
-        log_with_timestamp "❌ Failed to configure Solana CLI" "error"
+        log_with_timestamp "$contract_name" "❌ Failed to configure Solana CLI" "error"
         return 1
     fi
     if [[ "$solana_url" == *"devnet"* ]]; then
-        log_with_timestamp "💰 Requesting SOL airdrop for testing..."
-        solana airdrop 2 >/dev/null 2>&1 || log_with_timestamp "⚠️ Airdrop failed (might be rate limited)"
+        log_with_timestamp "$contract_name" "💰 Requesting SOL airdrop for testing..."
+        solana airdrop 2 >/dev/null 2>&1 || log_with_timestamp "$contract_name" "⚠️ Airdrop failed (might be rate limited)"
     fi
     return 0
 }
@@ -131,17 +97,12 @@ generate_cargo_toml_from_template() {
     local contract_name="$1"
     if [ -f "/app/Cargo.toml.template" ]; then
         sed "s/{{CONTRACT_NAME}}/$contract_name/g" "/app/Cargo.toml.template" > "/app/Cargo.toml"
-        log_with_timestamp "📝 Cargo.toml generated from template for $contract_name"
-    else
-        log_with_timestamp "❌ Cargo.toml.template not found!" "error"
-        return 1
     fi
 }
 
 create_test_files() {
     local contract_name="$1"
     local project_type="$2"
-    log_with_timestamp "🧪 Creating test files for $contract_name ($project_type)..."
     mkdir -p "/app/tests"
     cat > "/app/tests/test_${contract_name}.rs" <<EOF
 #[cfg(test)]
@@ -152,64 +113,59 @@ mod tests {
     }
 }
 EOF
-    log_with_timestamp "✅ Created test files"
 }
 
 run_tests_with_coverage() {
     local contract_name="$1"
-    log_with_timestamp "🧪 Running tests with coverage for $contract_name..."
     mkdir -p "/app/logs/coverage"
-    if cargo test --all-features --all-targets | tee -a "$LOG_FILE"; then
-        log_with_timestamp "✅ Unit and integration tests passed"
+    if cargo test --all-features --all-targets | tee -a "/app/logs/${contract_name}-test.log"; then
+        log_with_timestamp "$contract_name" "✅ Unit and integration tests passed"
     else
-        log_with_timestamp "❌ Some tests failed" "error"
+        log_with_timestamp "$contract_name" "❌ Some tests failed" "error"
     fi
-    if cargo tarpaulin --config /app/tarpaulin.toml -v --out Html --output-dir /app/logs/coverage | tee -a "$LOG_FILE"; then
-        log_with_timestamp "✅ Coverage completed successfully"
+    if cargo tarpaulin --config /app/tarpaulin.toml -v --out Html --output-dir /app/logs/coverage | tee -a "/app/logs/${contract_name}-test.log"; then
+        log_with_timestamp "$contract_name" "✅ Coverage completed successfully"
     else
-        log_with_timestamp "⚠️ Coverage generation had some issues" "error"
+        log_with_timestamp "$contract_name" "⚠️ Coverage generation had some issues" "error"
     fi
     if [ -f "/app/logs/coverage/tarpaulin-report.html" ]; then
         mv "/app/logs/coverage/tarpaulin-report.html" "/app/logs/coverage/${contract_name}-tarpaulin-report.html"
-        log_with_timestamp "📊 Coverage report generated: /app/logs/coverage/${contract_name}-tarpaulin-report.html"
+        log_with_timestamp "$contract_name" "📊 Coverage report generated: /app/logs/coverage/${contract_name}-tarpaulin-report.html"
     else
-        log_with_timestamp "❌ Failed to generate coverage report" "error"
+        log_with_timestamp "$contract_name" "❌ Failed to generate coverage report" "error"
     fi
 }
 
 run_security_audit() {
     local contract_name="$1"
-    log_with_timestamp "🛡️ Running security audit for $contract_name..." "security"
     cargo generate-lockfile || true
     mkdir -p "/app/logs/security"
     if cargo audit -f /app/Cargo.lock > "/app/logs/security/${contract_name}-cargo-audit.log" 2>&1; then
-        log_with_timestamp "✅ Cargo audit completed successfully" "security"
+        log_with_timestamp "$contract_name" "✅ Cargo audit completed successfully" "security"
     else
-        log_with_timestamp "⚠️ Cargo audit found potential vulnerabilities" "security"
+        log_with_timestamp "$contract_name" "⚠️ Cargo audit found potential vulnerabilities" "security"
     fi
     if cargo clippy --all-targets --all-features -- -D warnings > "/app/logs/security/${contract_name}-clippy.log" 2>&1; then
-        log_with_timestamp "✅ Clippy checks passed" "security"
+        log_with_timestamp "$contract_name" "✅ Clippy checks passed" "security"
     else
-        log_with_timestamp "⚠️ Clippy found code quality issues" "security"
+        log_with_timestamp "$contract_name" "⚠️ Clippy found code quality issues" "security"
     fi
 }
 
 run_performance_analysis() {
     local contract_name="$1"
-    log_with_timestamp "⚡ Running performance analysis for $contract_name..." "performance"
     mkdir -p "/app/logs/benchmarks"
-    log_with_timestamp "Measuring build time performance..." "performance"
     local start_time=$(date +%s)
     if cargo build --release > "/app/logs/benchmarks/${contract_name}-build-time.log" 2>&1; then
         local end_time=$(date +%s)
         local build_time=$((end_time - start_time))
-        log_with_timestamp "✅ Release build completed in $build_time seconds" "performance"
+        log_with_timestamp "$contract_name" "✅ Release build completed in $build_time seconds" "performance"
     else
-        log_with_timestamp "❌ Release build failed" "performance"
+        log_with_timestamp "$contract_name" "❌ Release build failed" "performance"
     fi
     if [ -f "/app/target/release/${contract_name}.so" ]; then
         local program_size=$(du -h "/app/target/release/${contract_name}.so" | cut -f1)
-        log_with_timestamp "📊 Program size: $program_size" "performance"
+        log_with_timestamp "$contract_name" "📊 Program size: $program_size" "performance"
         echo "$program_size" > "/app/logs/benchmarks/${contract_name}-program-size.txt"
     fi
 }
@@ -220,7 +176,6 @@ generate_comprehensive_report() {
     local start_time="$3"
     local end_time="$4"
     local processing_time=$((end_time - start_time))
-    log_with_timestamp "📝 Generating comprehensive report for $contract_name..."
     mkdir -p "/app/logs/reports"
     local report_file="/app/logs/reports/${contract_name}_report.md"
     cat > "$report_file" <<EOF
@@ -265,27 +220,13 @@ EOF
     echo "- Ensure comprehensive test coverage for all program paths" >> "$report_file"
     echo "- Address any security concerns highlighted in the audit report" >> "$report_file"
     echo "- Consider optimizing program size and execution time if required" >> "$report_file"
-    log_with_timestamp "✅ Comprehensive report generated at $report_file"
 }
 
 if [ -f "/app/.env" ]; then
     export $(cat /app/.env | grep -v '^#' | xargs)
-    log_with_timestamp "✅ Environment variables loaded from .env"
 fi
-
-setup_solana_environment || {
-    log_with_timestamp "❌ Failed to setup Solana environment" "error"
-}
 
 generate_tarpaulin_config
-
-if [ "$AWS_XRAY_SDK_ENABLED" = "true" ]; then
-    start_xray_daemon
-fi
-
-log_with_timestamp "🚀 Starting Enhanced Non-EVM (Solana) Container..."
-log_with_timestamp "📡 Watching for smart contract files in /app/input..."
-log_with_timestamp "🔧 Environment: ${RUST_LOG:-info} log level"
 
 inotifywait -m -e close_write,moved_to,create /app/input | \
 while read -r directory events filename; do
@@ -294,61 +235,56 @@ while read -r directory events filename; do
         (
             exec 9>"$MARKER_FILE.lock"
             if ! flock -n 9; then
-                log_with_timestamp "⏭️ Lock exists for $filename, skipping (concurrent event)"
                 continue
             fi
 
-            # If processed recently, skip
             if [ -f "$MARKER_FILE" ]; then
                 LAST_PROCESSED=$(cat "$MARKER_FILE")
                 CURRENT_TIME=$(date +%s)
                 if (( $CURRENT_TIME - $LAST_PROCESSED < 30 )); then
-                    log_with_timestamp "⏭️ Skipping duplicate processing of $filename (processed ${LAST_PROCESSED}s ago)"
                     continue
                 fi
             fi
             date +%s > "$MARKER_FILE"
 
-            start_time=$(date +%s)
             contract_name="${filename%.rs}"
-            mkdir -p /app/src
-            cp "/app/input/$filename" "/app/src/lib.rs"
-            log_with_timestamp "📁 Copied $filename to /app/src/lib.rs"
 
-            # --- CLEANUP: Remove old logs for this contract before analysis ---
+            # Clean up per-contract logs
             find /app/logs/coverage -type f -name "${contract_name}*" -delete
             find /app/logs/security -type f -name "${contract_name}*" -delete
             find /app/logs/benchmarks -type f -name "${contract_name}*" -delete
             find /app/logs/reports -type f -name "${contract_name}*" -delete
+            : > "/app/logs/${contract_name}-test.log"
+            : > "/app/logs/${contract_name}-error.log"
 
+            cp "/app/input/$filename" "/app/src/lib.rs"
             generate_cargo_toml_from_template "$contract_name" || continue
+            setup_solana_environment "$contract_name" || continue
 
             project_type=$(detect_project_type "/app/src/lib.rs")
-            log_with_timestamp "🔍 Detected project type: $project_type"
-
             create_test_files "$contract_name" "$project_type"
 
-            if cargo build 2>&1 | tee -a "$LOG_FILE"; then
-                log_with_timestamp "✅ Build successful"
+            log_with_timestamp "$contract_name" "🚀 Starting analysis for $contract_name"
+            if cargo build 2>&1 | tee -a "/app/logs/${contract_name}-test.log"; then
+                log_with_timestamp "$contract_name" "✅ Build successful"
             else
-                log_with_timestamp "❌ Build failed for $contract_name" "error"
+                log_with_timestamp "$contract_name" "❌ Build failed for $contract_name" "error"
                 continue
             fi
 
+            start_time=$(date +%s)
             run_tests_with_coverage "$contract_name"
             run_security_audit "$contract_name"
             run_performance_analysis "$contract_name"
-
             end_time=$(date +%s)
             generate_comprehensive_report "$contract_name" "$project_type" "$start_time" "$end_time"
-            log_with_timestamp "🏁 Completed processing $filename"
+            log_with_timestamp "$contract_name" "🏁 Completed processing $filename"
 
             if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
-                node /app/scripts/aggregate-all-logs.js "$contract_name" | tee -a "$LOG_FILE"
-                log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.md"
+                node /app/scripts/aggregate-all-logs.js "$contract_name" | tee -a "/app/logs/${contract_name}-test.log"
+                log_with_timestamp "$contract_name" "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.md"
             fi
-
-            log_with_timestamp "=========================================="
+            log_with_timestamp "$contract_name" "=========================================="
         )
     fi
 done
