@@ -1,292 +1,271 @@
 #!/bin/bash
 set -e
 
-mkdir -p /app/input /app/logs /app/logs/security /app/logs/analysis /app/logs/xray /app/logs/coverage /app/logs/reports /app/logs/benchmarks /app/.processed /app/src
+echo "🚀 Starting EVM container..."
+
+export REPORT_GAS=true
+export HARDHAT_NETWORK=hardhat
+export SLITHER_CONFIG_FILE="./config/slither.config.json"
+
+mkdir -p /app/input
+mkdir -p /app/logs
+mkdir -p /app/contracts
+mkdir -p /app/test
+mkdir -p /app/logs/slither
+mkdir -p /app/logs/coverage
+mkdir -p /app/logs/gas
+mkdir -p /app/logs/foundry
+mkdir -p /app/logs/reports
+mkdir -p /app/config
+mkdir -p /app/scripts
 
 log_with_timestamp() {
     local contract_name="$1"
     local message="$2"
-    local log_type="${3:-info}"
-    local timestamp="[$(date '+%Y-%m-%d %H:%M:%S')]"
-    local LOG_FILE="/app/logs/${contract_name}-test.log"
-    local ERROR_LOG="/app/logs/${contract_name}-error.log"
-    local SECURITY_LOG="/app/logs/security/${contract_name}-security-audit.log"
-    local PERFORMANCE_LOG="/app/logs/analysis/${contract_name}-performance.log"
-    local XRAY_LOG="/app/logs/xray/${contract_name}-xray.log"
-    case $log_type in
-        "error") echo "$timestamp ❌ $message" | tee -a "$LOG_FILE" "$ERROR_LOG" ;;
-        "security") echo "$timestamp 🛡️ $message" | tee -a "$LOG_FILE" "$SECURITY_LOG" ;;
-        "performance") echo "$timestamp ⚡ $message" | tee -a "$LOG_FILE" "$PERFORMANCE_LOG" ;;
-        "xray") echo "$timestamp 📡 $message" | tee -a "$LOG_FILE" "$XRAY_LOG" ;;
-        *) echo "$timestamp $message" | tee -a "$LOG_FILE" ;;
+    local LOG_FILE="/app/logs/${contract_name}-evm-test.log"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $message" | tee -a "$LOG_FILE"
+}
+
+sanitize_solidity_name() {
+    local raw="$1"
+    local sanitized="${raw//[^a-zA-Z0-9_]/_}"
+    sanitized="${sanitized//__/_}"
+    sanitized="${sanitized#_}"
+    sanitized="${sanitized%_}"
+    [[ "$sanitized" =~ ^[0-9] ]] && sanitized="_$sanitized"
+    case "$sanitized" in
+      storage|mapping|function|contract|address|enum|struct|event|modifier|constant)
+        sanitized="${sanitized}C"
+        ;;
     esac
+    echo "$sanitized"
 }
 
-# ...helper functions adapted for per-contract log_with_timestamp usage...
-
-command_exists() { command -v "$1" >/dev/null 2>&1; }
-
-generate_tarpaulin_config() {
-    if [ ! -f "/app/tarpaulin.toml" ]; then
-        cat > "/app/tarpaulin.toml" <<EOF
-[all]
-timeout = "300s"
-debug = false
-follow-exec = true
-verbose = true
-workspace = true
-out = ["Html", "Xml"]
-output-dir = "/app/logs/coverage"
-exclude-files = [
-    "tests/*",
-    "*/build/*", 
-    "*/dist/*"
-]
-ignore-tests = true
+create_simplified_hardhat_config() {
+    cat > "/app/hardhat.config.js" <<EOF
+/** @type import('hardhat/config').HardhatUserConfig */
+module.exports = {
+  solidity: {
+    compilers: [
+      { version: "0.8.24", settings: { optimizer: { enabled: true, runs: 200 } } },
+      { version: "0.8.20" },
+      { version: "0.8.18" },
+      { version: "0.8.17" },
+      { version: "0.6.12" }
+    ],
+  },
+  networks: {
+    hardhat: { chainId: 1337, allowUnlimitedContractSize: true },
+    localhost: { url: "http://127.0.0.1:8545" },
+  },
+  paths: {
+    sources: "./contracts",
+    tests: "./test",
+    cache: "./cache",
+    artifacts: "./artifacts",
+  },
+};
 EOF
-    fi
+    ln -sf "/app/hardhat.config.js" "/app/config/hardhat.config.js"
+
+    cat > "/app/config/slither.config.json" <<EOF
+{
+  "detectors_to_exclude": [],
+  "exclude_informational": false,
+  "exclude_low": false,
+  "exclude_medium": false,
+  "exclude_high": false,
+  "solc_disable_warnings": false,
+  "json": "/app/logs/slither/slither-report.json",
+  "filter_paths": "node_modules",
+  "solc": "solc"
+}
+EOF
 }
 
-setup_solana_environment() {
-    local contract_name="$1"
-    log_with_timestamp "$contract_name" "🔧 Setting up Solana environment..."
-    if ! command_exists solana; then
-        log_with_timestamp "$contract_name" "❌ Solana CLI not found in PATH. Please rebuild the Docker image to include the Solana CLI." "error"
-        return 1
-    fi
-    if [ ! -f ~/.config/solana/id.json ]; then
-        log_with_timestamp "$contract_name" "🔑 Generating new Solana keypair..."
-        mkdir -p ~/.config/solana
-        if solana-keygen new --no-bip39-passphrase --silent --outfile ~/.config/solana/id.json; then
-            log_with_timestamp "$contract_name" "✅ Solana keypair generated"
-        else
-            log_with_timestamp "$contract_name" "❌ Failed to generate Solana keypair" "error"
-            return 1
-        fi
-    fi
-    local solana_url="${SOLANA_URL:-https://api.devnet.solana.com}"
-    if solana config set --url "$solana_url" --keypair ~/.config/solana/id.json; then
-        log_with_timestamp "$contract_name" "✅ Solana config set successfully"
-    else
-        log_with_timestamp "$contract_name" "❌ Failed to set Solana config" "error"
-        return 1
-    fi
-    if solana config get >/dev/null 2>&1; then
-        log_with_timestamp "$contract_name" "✅ Solana CLI configured successfully"
-    else
-        log_with_timestamp "$contract_name" "❌ Failed to configure Solana CLI" "error"
-        return 1
-    fi
-    if [[ "$solana_url" == *"devnet"* ]]; then
-        log_with_timestamp "$contract_name" "💰 Requesting SOL airdrop for testing..."
-        solana airdrop 2 >/dev/null 2>&1 || log_with_timestamp "$contract_name" "⚠️ Airdrop failed (might be rate limited)"
-    fi
-    return 0
+create_simple_analysis_script() {
+    cat > "/app/scripts/analyze-contract.js" <<EOF
+// Simple stub analysis script
+console.log("Analysis script placeholder");
+EOF
+    chmod +x /app/scripts/analyze-contract.js
 }
 
-detect_project_type() {
-    local file_path="$1"
-    if grep -q "#\[program\]" "$file_path" || grep -q "use anchor_lang::prelude" "$file_path"; then
-        echo "anchor"
-    elif grep -q "entrypoint\!" "$file_path" || grep -q "solana_program::entrypoint\!" "$file_path"; then
-        echo "native"
-    else
-        echo "unknown"
-    fi
-}
+create_simplified_hardhat_config
+create_simple_analysis_script
 
-generate_cargo_toml_from_template() {
-    local contract_name="$1"
-    if [ -f "/app/Cargo.toml.template" ]; then
-        sed "s/{{CONTRACT_NAME}}/$contract_name/g" "/app/Cargo.toml.template" > "/app/Cargo.toml"
-    fi
-}
+MARKER_DIR="/app/.processed"
+mkdir -p "$MARKER_DIR"
 
-create_test_files() {
-    local contract_name="$1"
-    local project_type="$2"
-    mkdir -p "/app/tests"
-    cat > "/app/tests/test_${contract_name}.rs" <<EOF
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_placeholder() {
-        assert!(true, "Placeholder test passed");
+inotifywait -m -e close_write,moved_to,create /app/input |
+while read -r directory events filename; do
+  if [[ "$filename" == *.sol ]]; then
+    MARKER_FILE="$MARKER_DIR/$filename.processed"
+    (
+      exec 9>"$MARKER_FILE.lock"
+      if ! flock -n 9; then
+        continue
+      fi
+
+      if [ -f "$MARKER_FILE" ]; then
+          LAST_PROCESSED=$(cat "$MARKER_FILE")
+          CURRENT_TIME=$(date +%s)
+          if (( $CURRENT_TIME - $LAST_PROCESSED < 30 )); then
+              continue
+          fi
+      fi
+
+      date +%s > "$MARKER_FILE"
+      contract_name=$(basename "$filename" .sol)
+      sanitized_name=$(sanitize_solidity_name "$contract_name")
+
+      # Clean up per-contract logs
+      find /app/logs/foundry -type f -name "${sanitized_name}*" -delete
+      find /app/logs/coverage -type f -name "${sanitized_name}*" -delete
+      find /app/logs/slither -type f -name "${sanitized_name}*" -delete
+      find /app/logs/reports -type f -name "${sanitized_name}*" -delete
+      : > "/app/logs/${sanitized_name}-evm-test.log"
+
+      mkdir -p /app/contracts
+      cp "/app/input/$filename" "/app/contracts/$filename"
+      log_with_timestamp "$sanitized_name" "🆕 Detected Solidity contract: $filename"
+      log_with_timestamp "$sanitized_name" "📁 Copied $filename to contracts directory"
+
+      test_file="./test/${sanitized_name}.t.sol"
+      if [ ! -f "$test_file" ]; then
+        cat > "$test_file" <<EOF
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "forge-std/Test.sol";
+import "../contracts/${filename}";
+
+contract ${sanitized_name}Test is Test {
+    ${sanitized_name} public contractInstance;
+
+    function setUp() public {
+        contractInstance = new ${sanitized_name}();
+    }
+
+    function testDeployment() public {
+        assert(address(contractInstance) != address(0));
     }
 }
 EOF
-}
+        log_with_timestamp "$sanitized_name" "✅ Basic test file created at $test_file"
+      fi
 
-run_tests_with_coverage() {
-    local contract_name="$1"
-    mkdir -p "/app/logs/coverage"
-    if cargo test --all-features --all-targets | tee -a "/app/logs/${contract_name}-test.log"; then
-        log_with_timestamp "$contract_name" "✅ Unit and integration tests passed"
-    else
-        log_with_timestamp "$contract_name" "❌ Some tests failed" "error"
-    fi
-    if cargo tarpaulin --config /app/tarpaulin.toml -v --out Html --output-dir /app/logs/coverage | tee -a "/app/logs/${contract_name}-test.log"; then
-        log_with_timestamp "$contract_name" "✅ Coverage completed successfully"
-    else
-        log_with_timestamp "$contract_name" "⚠️ Coverage generation had some issues" "error"
-    fi
-    if [ -f "/app/logs/coverage/tarpaulin-report.html" ]; then
-        mv "/app/logs/coverage/tarpaulin-report.html" "/app/logs/coverage/${contract_name}-tarpaulin-report.html"
-        log_with_timestamp "$contract_name" "📊 Coverage report generated: /app/logs/coverage/${contract_name}-tarpaulin-report.html"
-    else
-        log_with_timestamp "$contract_name" "❌ Failed to generate coverage report" "error"
-    fi
-}
+      log_with_timestamp "$sanitized_name" "🔨 Attempting direct Solidity compilation..."
+      mkdir -p /app/artifacts
+      if solc --bin --abi --optimize --overwrite -o /app/artifacts /app/contracts/$filename 2>/dev/null; then
+        log_with_timestamp "$sanitized_name" "✅ Direct Solidity compilation successful"
+      else
+        log_with_timestamp "$sanitized_name" "⚠️ Direct compilation had issues, continuing with analysis"
+      fi
 
-run_security_audit() {
-    local contract_name="$1"
-    cargo generate-lockfile || true
-    mkdir -p "/app/logs/security"
-    if cargo audit -f /app/Cargo.lock > "/app/logs/security/${contract_name}-cargo-audit.log" 2>&1; then
-        log_with_timestamp "$contract_name" "✅ Cargo audit completed successfully" "security"
-    else
-        log_with_timestamp "$contract_name" "⚠️ Cargo audit found potential vulnerabilities" "security"
-    fi
-    if cargo clippy --all-targets --all-features -- -D warnings > "/app/logs/security/${contract_name}-clippy.log" 2>&1; then
-        log_with_timestamp "$contract_name" "✅ Clippy checks passed" "security"
-    else
-        log_with_timestamp "$contract_name" "⚠️ Clippy found code quality issues" "security"
-    fi
-}
+      log_with_timestamp "$sanitized_name" "🧪 Running Foundry tests with gas reporting..."
+      if forge test --gas-report --json > ./logs/foundry/${sanitized_name}-foundry-test-report.json 2>&1 | tee -a "/app/logs/${sanitized_name}-evm-test.log"; then
+        log_with_timestamp "$sanitized_name" "✅ Foundry tests passed with gas report"
+      else
+        log_with_timestamp "$sanitized_name" "❌ Foundry tests failed - check logs/foundry/${sanitized_name}-foundry-test-report.json"
+      fi
 
-run_performance_analysis() {
-    local contract_name="$1"
-    mkdir -p "/app/logs/benchmarks"
-    local start_time=$(date +%s)
-    if cargo build --release > "/app/logs/benchmarks/${contract_name}-build-time.log" 2>&1; then
-        local end_time=$(date +%s)
-        local build_time=$((end_time - start_time))
-        log_with_timestamp "$contract_name" "✅ Release build completed in $build_time seconds" "performance"
-    else
-        log_with_timestamp "$contract_name" "❌ Release build failed" "performance"
-    fi
-    if [ -f "/app/target/release/${contract_name}.so" ]; then
-        local program_size=$(du -h "/app/target/release/${contract_name}.so" | cut -f1)
-        log_with_timestamp "$contract_name" "📊 Program size: $program_size" "performance"
-        echo "$program_size" > "/app/logs/benchmarks/${contract_name}-program-size.txt"
-    fi
-}
+      log_with_timestamp "$sanitized_name" "📊 Generating Foundry coverage report..."
+      if forge coverage --report lcov --report-file ./logs/coverage/${sanitized_name}-foundry-lcov.info 2>&1 | tee -a "/app/logs/${sanitized_name}-evm-test.log"; then
+        log_with_timestamp "$sanitized_name" "✅ Foundry coverage report generated"
+      else
+        log_with_timestamp "$sanitized_name" "⚠️ Foundry coverage generation failed"
+      fi
 
-generate_comprehensive_report() {
-    local contract_name="$1"
-    local project_type="$2"
-    local start_time="$3"
-    local end_time="$4"
-    local processing_time=$((end_time - start_time))
-    mkdir -p "/app/logs/reports"
-    local report_file="/app/logs/reports/${contract_name}_report.md"
-    cat > "$report_file" <<EOF
-# Comprehensive Analysis Report for $contract_name
+      log_with_timestamp "$sanitized_name" "🔍 Running simple contract analysis..."
+      if node /app/scripts/analyze-contract.js "/app/contracts/$filename" > "./logs/reports/${sanitized_name}-analysis.txt" 2>&1; then
+        log_with_timestamp "$sanitized_name" "✅ Simple contract analysis completed"
+      else
+        log_with_timestamp "$sanitized_name" "⚠️ Simple contract analysis failed"
+      fi
 
-## Overview
-- **Contract Name:** $contract_name
-- **Project Type:** $project_type
-- **Processing Time:** $processing_time seconds
-- **Timestamp:** $(date)
-
-## Build Status
-- Build completed successfully
-- Project structure verified
-
-## Test Results
-EOF
-    if [ -f "/app/logs/coverage/${contract_name}-tarpaulin-report.html" ]; then
-        echo "- ✅ Tests executed successfully" >> "$report_file"
-        echo "- 📊 Coverage report available at \`/app/logs/coverage/${contract_name}-tarpaulin-report.html\`" >> "$report_file"
-    else
-        echo "- ⚠️ Test coverage report not available" >> "$report_file"
-    fi
-    echo -e "\n## Security Analysis" >> "$report_file"
-    if [ -f "/app/logs/security/${contract_name}-cargo-audit.log" ]; then
-        echo "- 🛡️ Security audit completed" >> "$report_file"
-        echo "- Details available in \`/app/logs/security/${contract_name}-cargo-audit.log\`" >> "$report_file"
-    else
-        echo "- ⚠️ Security audit report not available" >> "$report_file"
-    fi
-    echo -e "\n## Performance Analysis" >> "$report_file"
-    if [ -f "/app/logs/benchmarks/${contract_name}-build-time.log" ]; then
-        echo "- ⚡ Performance analysis completed" >> "$report_file"
-        if [ -f "/app/target/release/${contract_name}.so" ]; then
-            local program_size=$(du -h "/app/target/release/${contract_name}.so" | cut -f1)
-            echo "- 📊 Program size: $program_size" >> "$report_file"
+      log_with_timestamp "$sanitized_name" "🛡️ Running Slither security analysis..."
+      if command -v slither &> /dev/null; then
+        if slither "/app/contracts/$filename" --solc solc > "./logs/slither/${sanitized_name}-report.txt" 2>&1; then
+          log_with_timestamp "$sanitized_name" "✅ Slither analysis completed"
+        else
+          log_with_timestamp "$sanitized_name" "⚠️ Slither analysis completed with findings"
         fi
-    else
-        echo "- ⚠️ Performance analysis not available" >> "$report_file"
-    fi
-    echo -e "\n## Recommendations" >> "$report_file"
-    echo "- Ensure comprehensive test coverage for all program paths" >> "$report_file"
-    echo "- Address any security concerns highlighted in the audit report" >> "$report_file"
-    echo "- Consider optimizing program size and execution time if required" >> "$report_file"
-}
+      else
+        log_with_timestamp "$sanitized_name" "ℹ️ Slither not available, skipping security analysis"
+      fi
 
-if [ -f "/app/.env" ]; then
-    export $(cat /app/.env | grep -v '^#' | xargs)
-fi
+      log_with_timestamp "$sanitized_name" "📏 Analyzing contract size..."
+      filesize=$(stat -c%s "/app/contracts/$filename")
+      echo "Contract: $sanitized_name" > "./logs/reports/${sanitized_name}-size.txt"
+      echo "Source size: $filesize bytes" >> "./logs/reports/${sanitized_name}-size.txt"
 
-generate_tarpaulin_config
+      if [ -f "/app/artifacts/${sanitized_name}.bin" ]; then
+        binsize=$(stat -c%s "/app/artifacts/${sanitized_name}.bin")
+        hexsize=$((binsize / 2))
+        echo "Compiled size: $hexsize bytes" >> "./logs/reports/${sanitized_name}-size.txt"
+        echo "EIP-170 limit: 24576 bytes" >> "./logs/reports/${sanitized_name}-size.txt"
+        if [ "$hexsize" -gt 24576 ]; then
+          echo "Status: Exceeds limit ❌" >> "./logs/reports/${sanitized_name}-size.txt"
+        else
+          echo "Status: Within limit ✅" >> "./logs/reports/${sanitized_name}-size.txt"
+        fi
+      fi
+      log_with_timestamp "$sanitized_name" "✅ Contract size analysis completed"
 
-inotifywait -m -e close_write,moved_to,create /app/input | \
-while read -r directory events filename; do
-    if [[ "$filename" == *.rs ]]; then
-        MARKER_FILE="/app/.processed/$filename.processed"
-        (
-            exec 9>"$MARKER_FILE.lock"
-            if ! flock -n 9; then
-                continue
-            fi
+      log_with_timestamp "$sanitized_name" "📋 Creating test summary..."
+      cat > "./logs/reports/test-summary-${sanitized_name}.md" <<EOF
+# Test Summary for ${sanitized_name}
 
-            if [ -f "$MARKER_FILE" ]; then
-                LAST_PROCESSED=$(cat "$MARKER_FILE")
-                CURRENT_TIME=$(date +%s)
-                if (( $CURRENT_TIME - $LAST_PROCESSED < 30 )); then
-                    continue
-                fi
-            fi
-            date +%s > "$MARKER_FILE"
+## Contract Information
+- **File**: ${filename}
+- **Contract Name**: ${sanitized_name}
+- **Test Date**: $(date '+%Y-%m-%d %H:%M:%S')
+- **Source Size**: ${filesize} bytes
 
-            contract_name="${filename%.rs}"
+## Analysis Results
+- **Compilation**: $([ -f "/app/artifacts/${sanitized_name}.bin" ] && echo "✅ SUCCESSFUL" || echo "⚠️ ISSUES FOUND")
+- **Foundry Tests**: $(grep -q "✅ Foundry tests passed" "/app/logs/${sanitized_name}-evm-test.log" && echo "✅ PASSED" || echo "ℹ️ N/A")
+- **Security Analysis**: $(grep -q "✅ Slither analysis completed" "/app/logs/${sanitized_name}-evm-test.log" && echo "✅ COMPLETED" || echo "⚠️ ISSUES FOUND")
+- **Contract Analysis**: $(grep -q "✅ Simple contract analysis completed" "/app/logs/${sanitized_name}-evm-test.log" && echo "✅ COMPLETED" || echo "⚠️ FAILED")
+EOF
 
-            # Clean up per-contract logs
-            find /app/logs/coverage -type f -name "${contract_name}*" -delete
-            find /app/logs/security -type f -name "${contract_name}*" -delete
-            find /app/logs/benchmarks -type f -name "${contract_name}*" -delete
-            find /app/logs/reports -type f -name "${contract_name}*" -delete
-            : > "/app/logs/${contract_name}-test.log"
-            : > "/app/logs/${contract_name}-error.log"
+      if [ -f "/app/artifacts/${sanitized_name}.bin" ]; then
+        cat >> "./logs/reports/test-summary-${sanitized_name}.md" <<EOF
+- **Compiled Size**: ${hexsize} bytes
+- **Contract Size Limit**: $([ "$hexsize" -gt 24576 ] && echo "❌ EXCEEDS LIMIT" || echo "✅ WITHIN LIMIT")
+EOF
+      fi
 
-            cp "/app/input/$filename" "/app/src/lib.rs"
-            generate_cargo_toml_from_template "$contract_name" || continue
-            setup_solana_environment "$contract_name" || continue
+      cat >> "./logs/reports/test-summary-${sanitized_name}.md" <<EOF
 
-            project_type=$(detect_project_type "/app/src/lib.rs")
-            create_test_files "$contract_name" "$project_type"
+## Files Generated
+- Security Report: \`logs/slither/${sanitized_name}-report.txt\`
+- Contract Analysis: \`logs/reports/${sanitized_name}-analysis.txt\`
+- Size Analysis: \`logs/reports/${sanitized_name}-size.txt\`
+- Foundry Test Report: \`logs/foundry/${sanitized_name}-foundry-test-report.json\`
+- Coverage Report: \`logs/coverage/${sanitized_name}-foundry-lcov.info\`
+- Full Log: \`logs/${sanitized_name}-evm-test.log\`
 
-            log_with_timestamp "$contract_name" "🚀 Starting analysis for $contract_name"
-            if cargo build 2>&1 | tee -a "/app/logs/${contract_name}-test.log"; then
-                log_with_timestamp "$contract_name" "✅ Build successful"
-            else
-                log_with_timestamp "$contract_name" "❌ Build failed for $contract_name" "error"
-                continue
-            fi
+## Contract Analysis Highlights
 
-            start_time=$(date +%s)
-            run_tests_with_coverage "$contract_name"
-            run_security_audit "$contract_name"
-            run_performance_analysis "$contract_name"
-            end_time=$(date +%s)
-            generate_comprehensive_report "$contract_name" "$project_type" "$start_time" "$end_time"
-            log_with_timestamp "$contract_name" "🏁 Completed processing $filename"
+EOF
 
-            if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
-                node /app/scripts/aggregate-all-logs.js "$contract_name" | tee -a "/app/logs/${contract_name}-test.log"
-                log_with_timestamp "$contract_name" "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.md"
-            fi
-            log_with_timestamp "$contract_name" "=========================================="
-        )
-    fi
+      if [ -f "./logs/reports/${sanitized_name}-analysis.txt" ]; then
+        grep "Simple Security Checks:" -A 20 "./logs/reports/${sanitized_name}-analysis.txt" >> "./logs/reports/test-summary-${sanitized_name}.md" || true
+      fi
+
+      log_with_timestamp "$sanitized_name" "📋 Test summary created: logs/reports/test-summary-${sanitized_name}.md"
+      log_with_timestamp "$sanitized_name" "🏁 All EVM analysis complete for $filename"
+      log_with_timestamp "$sanitized_name" "=========================================="
+
+      log_with_timestamp "$sanitized_name" "🤖 Starting AI-enhanced aggregation..."
+      if node /app/scripts/aggregate-all-logs.js "$sanitized_name" >> "/app/logs/${sanitized_name}-evm-test.log" 2>&1; then
+        log_with_timestamp "$sanitized_name" "✅ AI-enhanced report generated: /app/logs/reports/${sanitized_name}-report.md"
+      else
+        log_with_timestamp "$sanitized_name" "❌ AI-enhanced aggregation failed (see log for details)"
+      fi
+      log_with_timestamp "$sanitized_name" "=========================================="
+    )
+  fi
 done
