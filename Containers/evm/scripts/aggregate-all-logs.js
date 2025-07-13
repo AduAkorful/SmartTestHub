@@ -42,16 +42,16 @@ function aggregateDir(dir, filter = () => true) {
 }
 
 let fullLog = '';
-fullLog += section('EVM Container Procedure Log', tryRead('/app/logs/evm-test.log'));
+fullLog += section('EVM Container Procedure Log', tryRead(`/app/logs/${contractName}-evm-test.log`));
 fullLog += section('Foundry Test Reports', aggregateDir('/app/logs/foundry', f => f.endsWith('.json') || f.endsWith('.txt')));
 fullLog += section('Foundry Coverage Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.info') || f.endsWith('.json') || f.endsWith('.txt')));
 fullLog += section('Slither Security Reports', aggregateDir('/app/logs/slither', f => f.endsWith('.txt') || f.endsWith('.json')));
 fullLog += section('AI Summaries and Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
-fullLog += section('Other Logs', aggregateDir('/app/logs', f => f.endsWith('.log') && !f.includes('evm-test.log')));
+fullLog += section('Other Logs', aggregateDir('/app/logs', f => f.endsWith('.log') && !f.includes(`${contractName}-evm-test.log`)));
 
 fullLog += section('Tool Run Confirmation', `
 The following tools' logs were aggregated for ${contractName}:
-- Compilation: evm-test.log, artifact and error logs
+- Compilation: ${contractName}-evm-test.log, artifact and error logs
 - Testing: Foundry (all files in /app/logs/foundry starting with ${contractName}), coverage (all files in /app/logs/coverage starting with ${contractName})
 - Security: Slither (all files in /app/logs/slither starting with ${contractName})
 - AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
