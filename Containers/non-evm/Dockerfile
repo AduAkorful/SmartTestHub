@@ -18,6 +18,22 @@ ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
 # Install Anchor CLI 0.31.1
 RUN cargo install --git https://github.com/coral-xyz/anchor --tag v0.31.1 anchor-cli --locked
 
+# --- RUST OPTIMIZED CACHING PATTERN BELOW ---
+
+# Create a new empty app dir for dependency caching
+WORKDIR /app
+
+# Copy only manifests first for Docker cache efficiency
+COPY Cargo.toml Cargo.lock ./
+
+# Pre-build dependencies to cache them, using dummy src/lib.rs
+RUN mkdir -p src && echo "pub fn dummy() {}" > src/lib.rs && \
+    cargo fetch && \
+    cargo build --release || true
+
+# Now copy the rest of the app (source, scripts, etc.)
+COPY . /app
+
 # Install latest cargo-deny and other dev tools, pin cargo-expand to a Rust 1.85.0-compatible version
 RUN cargo install cargo-deny && \
     cargo install cargo-audit && \
@@ -29,9 +45,6 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
 
 RUN pip install aws-xray-sdk
-
-WORKDIR /app
-COPY . /app
 
 # Make entrypoint script executable if present
 RUN chmod +x /app/entrypoint.sh || true
