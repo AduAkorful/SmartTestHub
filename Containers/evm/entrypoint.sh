@@ -54,7 +54,7 @@ module.exports = {
 EOF
     ln -sf "/app/hardhat.config.js" "/app/config/hardhat.config.js"
     log_with_timestamp "✅ Created simplified Hardhat configuration"
-    
+
     cat > "/app/config/slither.config.json" <<EOF
 {
   "detectors_to_exclude": [],
@@ -147,17 +147,21 @@ inotifywait -m -e close_write,moved_to,create /app/input |
 while read -r directory events filename; do
   if [[ "$filename" == *.sol ]]; then
     MARKER_FILE="$MARKER_DIR/$filename.processed"
+    FILE_PATH="/app/input/$filename"
+    if [ ! -f "$FILE_PATH" ]; then
+        continue
+    fi
+    CURRENT_HASH=$(sha256sum "$FILE_PATH" | awk '{print $1}')
     if [ -f "$MARKER_FILE" ]; then
-        LAST_PROCESSED=$(cat "$MARKER_FILE")
-        CURRENT_TIME=$(date +%s)
-        if (( $CURRENT_TIME - $LAST_PROCESSED < 30 )); then
-            log_with_timestamp "⏭️ Skipping duplicate processing of $filename (processed ${LAST_PROCESSED}s ago)"
+        LAST_HASH=$(cat "$MARKER_FILE")
+        if [ "$CURRENT_HASH" == "$LAST_HASH" ]; then
+            log_with_timestamp "⏭️ Skipping duplicate processing of $filename (same content hash)"
             continue
         fi
     fi
-    
+    echo "$CURRENT_HASH" > "$MARKER_FILE"
+
     {
-      date +%s > "$MARKER_FILE"
       log_with_timestamp "🆕 Detected Solidity contract: $filename"
       mkdir -p /app/contracts
       cp "/app/input/$filename" "/app/contracts/$filename"
