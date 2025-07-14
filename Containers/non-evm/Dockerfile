@@ -18,20 +18,24 @@ ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
 # Install Anchor CLI 0.31.1
 RUN cargo install --git https://github.com/coral-xyz/anchor --tag v0.31.1 anchor-cli --locked
 
-# --- RUST OPTIMIZED CACHING PATTERN BELOW ---
-
-# Create a new empty app dir for dependency caching
+# ---- OPTIMIZED RUST DEPENDENCY CACHING ----
 WORKDIR /app
 
-# Copy only manifests first for Docker cache efficiency
-COPY Cargo.toml Cargo.lock ./
+# Copy only Cargo.toml first for Docker cache efficiency
+COPY Cargo.toml ./
+
+# Generate Cargo.lock if it doesn't exist (library projects)
+RUN test -f Cargo.lock || cargo generate-lockfile
+
+# Copy Cargo.lock (guaranteed to exist now)
+COPY Cargo.lock ./
 
 # Pre-build dependencies to cache them, using dummy src/lib.rs
 RUN mkdir -p src && echo "pub fn dummy() {}" > src/lib.rs && \
     cargo fetch && \
     cargo build --release || true
 
-# Now copy the rest of the app (source, scripts, etc.)
+# Now copy the rest of the app, including source, scripts, etc.
 COPY . /app
 
 # Install latest cargo-deny and other dev tools, pin cargo-expand to a Rust 1.85.0-compatible version
