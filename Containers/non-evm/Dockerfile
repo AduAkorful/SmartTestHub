@@ -24,11 +24,8 @@ WORKDIR /app
 # Copy only Cargo.toml first for Docker cache efficiency
 COPY Cargo.toml ./
 
-# Generate Cargo.lock if it doesn't exist (library projects)
-RUN test -f Cargo.lock || cargo generate-lockfile
-
-# Copy Cargo.lock (guaranteed to exist now)
-COPY Cargo.lock ./
+# Generate Cargo.lock in the container (even for libraries)
+RUN cargo generate-lockfile
 
 # Pre-build dependencies to cache them, using dummy src/lib.rs
 RUN mkdir -p src && echo "pub fn dummy() {}" > src/lib.rs && \
