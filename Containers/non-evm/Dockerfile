@@ -18,10 +18,10 @@ ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
 # Install Anchor CLI 0.31.1
 RUN cargo install --git https://github.com/coral-xyz/anchor --tag v0.31.1 anchor-cli --locked
 
-# Install latest cargo-deny and other dev tools
+# Install latest cargo-deny and other dev tools, pin cargo-expand to a Rust 1.85.0-compatible version
 RUN cargo install cargo-deny && \
     cargo install cargo-audit && \
-    cargo install cargo-expand && \
+    cargo install cargo-expand --version 1.0.109 && \
     cargo install cargo-tarpaulin
 
 # Optional: Set up Python virtual environment for AWS X-Ray SDK
