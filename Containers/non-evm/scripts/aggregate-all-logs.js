@@ -3,7 +3,7 @@ const path = require('path');
 const axios = require('axios');
 require('dotenv').config({ path: '/app/.env' });
 
-const contractName = process.argv[2];
+const contractName = process.argv[2]; // first arg is contract name
 if (!contractName) {
   console.error("Contract name must be passed as argument to aggregate-all-logs.js");
   process.exit(1);
@@ -13,6 +13,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
+// CHANGE: output file
 const outputFile = `/app/logs/reports/${contractName}-report.md`;
 
 function tryRead(file, fallback = '') {
@@ -35,14 +36,15 @@ function section(title, content) {
   return `\n\n## ${title}\n\n${content || '_No output found._'}`;
 }
 
+// Only aggregate logs for this contract
 function aggregateDir(dir, filter = () => true) {
-  return tryList(dir, f => (f === `${contractName}-report.md` || f.startsWith(`${contractName}-`)) && filter(f))
+  return tryList(dir, f => f.startsWith(contractName) && filter(f))
     .map(f => `### File: ${f}\n` + tryRead(path.join(dir, f)))
     .join('\n\n');
 }
 
 let fullLog = '';
-fullLog += section('Non-EVM Container Procedure Log', tryRead(`/app/logs/${contractName}-test.log`));
+fullLog += section('Non-EVM Container Procedure Log', tryRead('/app/logs/test.log'));
 fullLog += section('Security Audit (Cargo Audit)', aggregateDir('/app/logs/security', f => f.endsWith('-cargo-audit.log')));
 fullLog += section('Security Lint (Clippy)', aggregateDir('/app/logs/security', f => f.endsWith('-clippy.log')));
 fullLog += section('Coverage Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.html')));
@@ -51,8 +53,8 @@ fullLog += section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f
 
 fullLog += section('Tool Run Confirmation', `
 The following tools' logs were aggregated for ${contractName}:
-- Compilation: ${contractName}-test.log, build logs
-- Testing: ${contractName}-test.log, coverage (all files in /app/logs/coverage starting with ${contractName})
+- Compilation: test.log, build logs
+- Testing: test.log, coverage (all files in /app/logs/coverage starting with ${contractName})
 - Security: Cargo Audit and Clippy (all files in /app/logs/security starting with ${contractName})
 - Performance: All logs in /app/logs/benchmarks starting with ${contractName}
 - AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
