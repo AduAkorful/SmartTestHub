@@ -3,7 +3,7 @@ const path = require('path');
 const axios = require('axios');
 require('dotenv').config({ path: '/app/.env' });
 
-const contractName = process.argv[2];
+const contractName = process.argv[2]; // first arg is contract name
 if (!contractName) {
   console.error("Contract name must be passed as argument to aggregate-all-logs.js");
   process.exit(1);
@@ -13,6 +13,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
+// CHANGE: output file
 const outputFile = `/app/logs/reports/${contractName}-report.md`;
 
 function tryRead(file, fallback = '') {
@@ -35,23 +36,24 @@ function section(title, content) {
   return `\n\n## ${title}\n\n${content || '_No output found._'}`;
 }
 
+// Only aggregate logs for this contract
 function aggregateDir(dir, filter = () => true) {
-  return tryList(dir, f => (f === `${contractName}-report.md` || f.startsWith(`${contractName}-`)) && filter(f))
+  return tryList(dir, f => f.startsWith(contractName) && filter(f))
     .map(f => `### File: ${f}\n` + tryRead(path.join(dir, f)))
     .join('\n\n');
 }
 
 let fullLog = '';
-fullLog += section('EVM Container Procedure Log', tryRead(`/app/logs/${contractName}-evm-test.log`));
+fullLog += section('EVM Container Procedure Log', tryRead('/app/logs/evm-test.log'));
 fullLog += section('Foundry Test Reports', aggregateDir('/app/logs/foundry', f => f.endsWith('.json') || f.endsWith('.txt')));
 fullLog += section('Foundry Coverage Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.info') || f.endsWith('.json') || f.endsWith('.txt')));
 fullLog += section('Slither Security Reports', aggregateDir('/app/logs/slither', f => f.endsWith('.txt') || f.endsWith('.json')));
 fullLog += section('AI Summaries and Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
-fullLog += section('Other Logs', aggregateDir('/app/logs', f => f.endsWith('.log') && !f.includes(`${contractName}-evm-test.log`)));
+fullLog += section('Other Logs', aggregateDir('/app/logs', f => f.endsWith('.log') && !f.includes('evm-test.log')));
 
 fullLog += section('Tool Run Confirmation', `
 The following tools' logs were aggregated for ${contractName}:
-- Compilation: ${contractName}-evm-test.log, artifact and error logs
+- Compilation: evm-test.log, artifact and error logs
 - Testing: Foundry (all files in /app/logs/foundry starting with ${contractName}), coverage (all files in /app/logs/coverage starting with ${contractName})
 - Security: Slither (all files in /app/logs/slither starting with ${contractName})
 - AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
@@ -97,7 +99,7 @@ async function enhanceReport() {
         timeout: 60000
       }
     );
-    const aiSummary =
+    const aiSummary = 
       response.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
       "Error: Malformed response from Gemini API.";
     fs.writeFileSync(outputFile, aiSummary);
