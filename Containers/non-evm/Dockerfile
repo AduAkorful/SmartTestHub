@@ -1,6 +1,7 @@
-FROM rust:1.72-buster
+# Use a recent, supported Rust image based on Debian Bookworm
+FROM rust:1.72-bookworm
 
-# Install system dependencies
+# Install system dependencies and tools
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       pkg-config \
@@ -27,22 +28,25 @@ RUN curl -sSfL https://release.solana.com/v${SOLANA_VERSION}/solana-release-x86_
 # Install Anchor CLI (latest main branch)
 RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked
 
-# Install tools for code coverage and security (optional but recommended)
+# Install code coverage and audit tools for Rust
 RUN cargo install cargo-tarpaulin cargo-audit
 
 # Set workdir
 WORKDIR /app
 
-# Copy manifests (Cargo.toml and Cargo.lock if exists)
+# Copy manifests (Cargo.toml always, Cargo.lock if it exists)
 COPY Cargo.toml ./
-COPY Cargo.lock .  # removes error if not present, optional
+# Copy Cargo.lock if it exists, but don't fail if missing
+RUN if [ -f Cargo.lock ]; then cp Cargo.lock Cargo.lock; fi
 
-# Pre-fetch dependencies for rapid test cycles
+# Pre-fetch dependencies for rapid test cycles.
+# Generate a dummy lockfile if not present (for libraries)
 RUN mkdir -p src && echo "pub fn dummy() {}" > src/lib.rs && \
+    if [ ! -f Cargo.lock ]; then cargo generate-lockfile; fi && \
     cargo fetch && \
     cargo build --release || true
 
-# Copy source and support files
+# Copy source and project files
 COPY src ./src
 COPY entrypoint.sh ./
 COPY config ./config
@@ -52,8 +56,8 @@ COPY scripts ./scripts
 # Make entrypoint executable
 RUN chmod +x /app/entrypoint.sh || true
 
-# Expose log/report directories if needed
+# Create log/report directories if needed
 RUN mkdir -p /app/logs/coverage /app/logs/reports /app/logs/benchmarks /app/logs/security /app/logs/xray
 
-# Entrypoint (or change to CMD for more flexibility)
+# Entrypoint (keep your advanced script orchestration)
 ENTRYPOINT ["/app/entrypoint.sh"]
