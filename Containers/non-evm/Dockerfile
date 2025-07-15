@@ -19,11 +19,11 @@ RUN apt-get update && \
       npm && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Solana CLI (stable)
+# Install Solana CLI (stable) using official installer script for reliability
 ENV SOLANA_VERSION=1.18.12
-RUN curl -sSfL https://release.solana.com/v${SOLANA_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2 | \
-    tar -xj -C /usr/local/bin --strip-components=2 solana-release/bin/solana && \
-    solana --version
+RUN sh -c "$(curl -sSfL https://release.solana.com/v${SOLANA_VERSION}/install)"
+ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
+RUN solana --version
 
 # Install Anchor CLI (latest main branch)
 RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked
@@ -36,17 +36,15 @@ WORKDIR /app
 
 # Copy manifests (Cargo.toml always, Cargo.lock if it exists)
 COPY Cargo.toml ./
-# Copy Cargo.lock if it exists, but don't fail if missing
-RUN if [ -f Cargo.lock ]; then cp Cargo.lock Cargo.lock; fi
+# Use a shell trick to copy Cargo.lock only if it exists in build context
+RUN test -f Cargo.lock || cargo generate-lockfile
 
-# Pre-fetch dependencies for rapid test cycles.
-# Generate a dummy lockfile if not present (for libraries)
+# Pre-fetch dependencies for rapid test cycles
 RUN mkdir -p src && echo "pub fn dummy() {}" > src/lib.rs && \
-    if [ ! -f Cargo.lock ]; then cargo generate-lockfile; fi && \
     cargo fetch && \
     cargo build --release || true
 
-# Copy source and project files
+# Copy project source and support files
 COPY src ./src
 COPY entrypoint.sh ./
 COPY config ./config
