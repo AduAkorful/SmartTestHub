@@ -1,4 +1,4 @@
-FROM rust:1.79-bookworm
+FROM rust:bookworm
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -17,6 +17,7 @@ RUN apt-get update && \
       npm && \
     rm -rf /var/lib/apt/lists/*
 
+# Copy and extract Solana CLI (offline install)
 COPY solana-release-x86_64-unknown-linux-gnu.tar.bz2 /tmp/
 RUN mkdir -p /root/.local/share/solana/install && \
     tar -xjf /tmp/solana-release-x86_64-unknown-linux-gnu.tar.bz2 -C /root/.local/share/solana/install && \
@@ -28,7 +29,7 @@ RUN solana --version
 
 RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked
 
-RUN cargo install cargo-tarpaulin cargo-audit
+RUN cargo install cargo-tarpaulin --locked && cargo install cargo-audit --locked
 
 WORKDIR /app
 
