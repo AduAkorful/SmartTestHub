@@ -39,10 +39,11 @@ RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked 
 
 WORKDIR /app
 
-# Copy only the Cargo.toml and Cargo.lock for dependency layer caching
+# Copy only the Cargo.toml for dependency layer caching
 COPY Cargo.toml ./
-COPY Cargo.lock ./
+# If Cargo.lock exists, copy it; else, generate it on the fly
 RUN mkdir -p src && echo "pub fn dummy() {}" > src/lib.rs && \
+    test -f Cargo.lock || cargo generate-lockfile && \
     cargo fetch && \
     SCCACHE_CACHE_SIZE=2G SCCACHE_DIR=/app/.cache/sccache RUSTC_WRAPPER=sccache cargo build --release || true
 
