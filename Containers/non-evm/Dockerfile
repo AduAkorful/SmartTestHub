@@ -17,13 +17,15 @@ RUN apt-get update && \
       npm && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Solana CLI using local installer (ensure solana-install is present in build context)
-COPY solana-install /tmp/solana-install
-RUN sh /tmp/solana-install && \
-    export PATH="/root/.local/share/solana/install/active_release/bin:$PATH" && \
-    solana --version
+# Copy and extract Solana CLI (offline install)
+COPY solana-release-x86_64-unknown-linux-gnu.tar.bz2 /tmp/
+RUN mkdir -p /root/.local/share/solana/install && \
+    tar -xjf /tmp/solana-release-x86_64-unknown-linux-gnu.tar.bz2 -C /root/.local/share/solana/install && \
+    mv /root/.local/share/solana/install/solana-release* /root/.local/share/solana/install/active_release
 
 ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
+
+RUN solana --version
 
 RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked
 
