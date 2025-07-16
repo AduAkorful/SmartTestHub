@@ -31,17 +31,17 @@ ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
 
 RUN solana --version
 
-# Install anchor, tarpaulin, audit, and clippy in one layer for cache
+# Install anchor, tarpaulin, audit, and clippy (as rustup component) in one layer for cache
 RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked && \
     cargo install cargo-tarpaulin --locked && \
     cargo install cargo-audit --locked && \
-    cargo install clippy
+    rustup component add clippy
 
 WORKDIR /app
 
 # Copy only the Cargo.toml for dependency layer caching
 COPY Cargo.toml ./
-# If Cargo.lock exists, copy it; else, generate it on the fly
+# If Cargo.lock exists, use it; else, generate it on the fly
 RUN mkdir -p src && echo "pub fn dummy() {}" > src/lib.rs && \
     test -f Cargo.lock || cargo generate-lockfile && \
     cargo fetch && \
