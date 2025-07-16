@@ -1,0 +1,14 @@
+{
+  "name": "non-evm-scripts",
+  "version": "1.0.0",
+  "description": "Utility scripts for SmartTestHub Non-EVM container",
+  "type": "module",
+  "main": "aggregate-all-logs.js",
+  "scripts": {
+    "aggregate": "node aggregate-all-logs.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.8"
+  },
+  "license": "MIT"
+}
