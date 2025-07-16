@@ -19,6 +19,7 @@ RUN apt-get update && \
 
 RUN cargo install sccache
 
+# Solana CLI (offline install)
 COPY solana-release-x86_64-unknown-linux-gnu.tar.bz2 /tmp/
 RUN mkdir -p /root/.local/share/solana/install && \
     tar -xjf /tmp/solana-release-x86_64-unknown-linux-gnu.tar.bz2 -C /root/.local/share/solana/install && \
@@ -34,8 +35,8 @@ RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked 
 WORKDIR /app
 
 # Install Node.js dependencies for scripts
-COPY scripts/package.json scripts/package-lock.json* /app/scripts/
-RUN if [ -f /app/scripts/package.json ]; then cd /app/scripts && npm ci; fi
+COPY scripts/package.json /app/scripts/
+RUN cd /app/scripts && npm install
 
 # Pre-cache all Rust dependencies including dev-deps
 COPY Cargo.toml ./
