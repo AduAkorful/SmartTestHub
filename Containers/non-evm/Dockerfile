@@ -1,6 +1,5 @@
 FROM rust:bookworm
 
-# Install system dependencies and keep this as a separate layer for caching
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       pkg-config \
@@ -31,7 +30,7 @@ ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
 
 RUN solana --version
 
-# Install anchor, tarpaulin, audit, and clippy (as rustup component) in one layer for cache
+# Install anchor, tarpaulin, audit, and clippy (as rustup component)
 RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked && \
     cargo install cargo-tarpaulin --locked && \
     cargo install cargo-audit --locked && \
@@ -39,15 +38,15 @@ RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked 
 
 WORKDIR /app
 
-# Copy only the Cargo.toml for dependency layer caching
+# Pre-cache dependencies for faster dev/test builds
 COPY Cargo.toml ./
-# If Cargo.lock exists, use it; else, generate it on the fly
-RUN mkdir -p src && echo "pub fn dummy() {}" > src/lib.rs && \
-    test -f Cargo.lock || cargo generate-lockfile && \
-    cargo fetch && \
-    SCCACHE_CACHE_SIZE=2G SCCACHE_DIR=/app/.cache/sccache RUSTC_WRAPPER=sccache cargo build --release || true
+RUN test -f Cargo.lock || cargo generate-lockfile
 
-# Copy the rest of the source and scripts
+RUN mkdir -p src && echo "pub fn dummy() {}" > src/lib.rs && \
+    SCCACHE_CACHE_SIZE=2G SCCACHE_DIR=/app/.cache/sccache RUSTC_WRAPPER=sccache cargo fetch && \
+    SCCACHE_CACHE_SIZE=2G SCCACHE_DIR=/app/.cache/sccache RUSTC_WRAPPER=sccache cargo build --release || true && \
+    SCCACHE_CACHE_SIZE=2G SCCACHE_DIR=/app/.cache/sccache RUSTC_WRAPPER=sccache cargo test --no-run || true
+
 COPY src ./src
 COPY entrypoint.sh ./
 COPY config ./config
@@ -57,6 +56,8 @@ COPY scripts ./scripts
 RUN chmod +x /app/entrypoint.sh || true
 
 RUN mkdir -p /app/logs/coverage /app/logs/reports /app/logs/benchmarks /app/logs/security /app/logs/xray
+
+RUN cd /app/scripts && npm install axios || true
 
 ENV CARGO_TARGET_DIR=/app/target
 ENV RUSTC_WRAPPER=sccache
