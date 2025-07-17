@@ -1,5 +1,6 @@
 FROM rust:bookworm
 
+# Install system dependencies and keep this as a separate layer for caching
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       pkg-config \
@@ -17,16 +18,20 @@ RUN apt-get update && \
       npm && \
     rm -rf /var/lib/apt/lists/*
 
+# Install sccache for Rust build caching
 RUN cargo install sccache
 
-# Solana CLI (offline install)
+# Copy and extract Solana CLI (offline install)
 COPY solana-release-x86_64-unknown-linux-gnu.tar.bz2 /tmp/
 RUN mkdir -p /root/.local/share/solana/install && \
     tar -xjf /tmp/solana-release-x86_64-unknown-linux-gnu.tar.bz2 -C /root/.local/share/solana/install && \
     mv /root/.local/share/solana/install/solana-release* /root/.local/share/solana/install/active_release
+
 ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
+
 RUN solana --version
 
+# Install anchor, tarpaulin, audit, and clippy (as rustup component) in one layer for cache
 RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked && \
     cargo install cargo-tarpaulin --locked && \
     cargo install cargo-audit --locked && \
@@ -34,28 +39,23 @@ RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked 
 
 WORKDIR /app
 
-# Install Node.js dependencies for scripts
-COPY scripts/package.json /app/scripts/
-RUN cd /app/scripts && npm install
-
-# Pre-cache all Rust dependencies including dev-deps
+# Copy only the Cargo.toml for dependency layer caching
 COPY Cargo.toml ./
-RUN mkdir -p src && echo "pub fn dummy() {}" > src/lib.rs
-RUN cargo generate-lockfile
-RUN SCCACHE_CACHE_SIZE=2G SCCACHE_DIR=/app/.cache/sccache RUSTC_WRAPPER=sccache \
+# If Cargo.lock exists, use it; else, generate it on the fly
+RUN mkdir -p src && echo "pub fn dummy() {}" > src/lib.rs && \
+    test -f Cargo.lock || cargo generate-lockfile && \
     cargo fetch && \
-    SCCACHE_CACHE_SIZE=2G SCCACHE_DIR=/app/.cache/sccache RUSTC_WRAPPER=sccache \
-    cargo build --release --all-features --all-targets || true && \
-    SCCACHE_CACHE_SIZE=2G SCCACHE_DIR=/app/.cache/sccache RUSTC_WRAPPER=sccache \
-    cargo test --no-run --all-features --all-targets || true
+    SCCACHE_CACHE_SIZE=2G SCCACHE_DIR=/app/.cache/sccache RUSTC_WRAPPER=sccache cargo build --release || true
 
+# Copy the rest of the source and scripts
 COPY src ./src
-COPY tests ./tests
-COPY config ./config
 COPY entrypoint.sh ./
+COPY config ./config
+COPY tests ./tests
 COPY scripts ./scripts
 
 RUN chmod +x /app/entrypoint.sh || true
+
 RUN mkdir -p /app/logs/coverage /app/logs/reports /app/logs/benchmarks /app/logs/security /app/logs/xray
 
 ENV CARGO_TARGET_DIR=/app/target
