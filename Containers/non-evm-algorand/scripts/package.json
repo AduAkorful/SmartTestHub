@@ -1,0 +1,9 @@
+{
+  "name": "algorand-log-aggregator",
+  "version": "1.0.0",
+  "description": "Log/report aggregator for Algorand container",
+  "main": "aggregate-all-logs.js",
+  "dependencies": {
+    "xml2js": "^0.6.2"
+  }
+}
