@@ -106,9 +106,7 @@ services:
       - starknet-devnet
 
   starknet-devnet:
-    build:
-      context: ./starknet-devnet
-      dockerfile: Dockerfile
+    image: shardlabs/starknet-devnet-rs:latest
     container_name: starknet-devnet
     ports:
       - "5050:5050"
