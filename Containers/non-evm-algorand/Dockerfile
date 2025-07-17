@@ -1,6 +1,5 @@
 FROM python:3.11-slim
 
-# System and Node dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         inotify-tools \
@@ -14,25 +13,21 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Python dependencies for Algorand dev, test, lint, security, and coverage
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Node.js scripts for log/report aggregation
 COPY scripts/package.json /app/scripts/
 RUN cd /app/scripts && npm install
 
-# Copy aggregation script (shared with other containers)
-COPY scripts/aggregate-all-logs.js /app/scripts/
-
-# Entrypoint and config
-COPY entrypoint.sh ./
+COPY src ./src
+COPY tests ./tests
 COPY config ./config
-
-# Prepare logs and input directories
-RUN mkdir -p /app/input /app/logs/coverage /app/logs/reports /app/logs/benchmarks /app/logs/security /app/logs/xray
+COPY scripts/aggregate-all-logs.js ./scripts/
+COPY entrypoint.sh ./
 
 RUN chmod +x /app/entrypoint.sh
+
+RUN mkdir -p /app/input /app/logs/coverage /app/logs/reports /app/logs/benchmarks /app/logs/security /app/logs/xray
 
 ENV PYTHONUNBUFFERED=1
 
