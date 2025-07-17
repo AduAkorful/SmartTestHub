@@ -46,20 +46,9 @@ while read -r directory events filename; do
             mkdir -p /app/src /app/tests
             cp "$FILE_PATH" /app/src/contract.cairo
 
-            # Auto-generate a minimal test if none exists
-            if [ ! -f "/app/tests/test_${CONTRACT_NAME}.py" ]; then
-                cat > "/app/tests/test_${CONTRACT_NAME}.py" <<EOF
-import pytest
-from starkware.starknet.testing.starknet import Starknet
-
-@pytest.mark.asyncio
-async def test_deploy():
-    starknet = await Starknet.empty()
-    # You can add deployment and interaction code here
-    assert True
-EOF
-                log_with_timestamp "🧪 Auto-generated minimal test for $CONTRACT_NAME"
-            fi
+            # Generate as many tests as possible based on contract analysis
+            python3 /app/scripts/generate_starknet_tests.py /app/src/contract.cairo "/app/tests/test_${CONTRACT_NAME}.py"
+            log_with_timestamp "🧪 Generated comprehensive tests for $CONTRACT_NAME"
 
             log_with_timestamp "🧪 Running pytest for $CONTRACT_NAME..."
             pytest --cov=src --cov-report=term --cov-report=xml:/app/logs/coverage/${CONTRACT_NAME}-coverage.xml --junitxml=/app/logs/reports/${CONTRACT_NAME}-junit.xml /app/tests/ | tee /app/logs/test.log
@@ -104,19 +93,8 @@ then
                 mkdir -p /app/src /app/tests
                 cp "$file" /app/src/contract.cairo
 
-                if [ ! -f "/app/tests/test_${CONTRACT_NAME}.py" ]; then
-                    cat > "/app/tests/test_${CONTRACT_NAME}.py" <<EOF
-import pytest
-from starkware.starknet.testing.starknet import Starknet
-
-@pytest.mark.asyncio
-async def test_deploy():
-    starknet = await Starknet.empty()
-    # You can add deployment and interaction code here
-    assert True
-EOF
-                    log_with_timestamp "🧪 Auto-generated minimal test for $CONTRACT_NAME"
-                fi
+                python3 /app/scripts/generate_starknet_tests.py /app/src/contract.cairo "/app/tests/test_${CONTRACT_NAME}.py"
+                log_with_timestamp "🧪 Generated comprehensive tests for $CONTRACT_NAME"
 
                 log_with_timestamp "🧪 Running pytest for $CONTRACT_NAME..."
                 pytest --cov=src --cov-report=term --cov-report=xml:/app/logs/coverage/${CONTRACT_NAME}-coverage.xml --junitxml=/app/logs/reports/${CONTRACT_NAME}-junit.xml /app/tests/ | tee /app/logs/test.log
