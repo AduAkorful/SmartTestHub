@@ -22,7 +22,6 @@ function tryRead(file, fallback = '') {
     return fallback;
   }
 }
-
 function tryList(dir, filter = () => true) {
   try {
     return fs.existsSync(dir) ? fs.readdirSync(dir).filter(filter) : [];
@@ -30,11 +29,9 @@ function tryList(dir, filter = () => true) {
     return [];
   }
 }
-
 function section(title, content) {
   return `\n\n## ${title}\n\n${content || '_No output found._'}`;
 }
-
 function aggregateDir(dir, filter = () => true) {
   return tryList(dir, f => f.startsWith(contractName) && filter(f))
     .map(f => `### File: ${f}\n` + tryRead(path.join(dir, f)))
