@@ -67,6 +67,25 @@ services:
     networks:
       - smarthub-network
 
+  non-evm-algorand:
+    build:
+      context: ./non-evm-algorand
+      dockerfile: Dockerfile
+    container_name: non-evm-algorand-container
+    working_dir: /app
+    volumes:
+      - shared_input:/app/input
+      - shared_logs_non_evm:/app/logs
+    tty: true
+    stdin_open: true
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    networks:
+      - smarthub-network
+
   file-input:
     image: busybox
     container_name: file-input-service
