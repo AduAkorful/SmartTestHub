@@ -1,0 +1,6 @@
+pyteal
+algokit
+pytest
+pytest-cov
+flake8
+bandit
