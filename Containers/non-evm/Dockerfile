@@ -40,8 +40,8 @@ RUN cd /app/scripts && npm install
 
 # Pre-cache all Rust dependencies including dev-deps
 COPY Cargo.toml ./
-COPY Cargo.lock ./  # will not fail if missing
 RUN mkdir -p src && echo "pub fn dummy() {}" > src/lib.rs
+RUN cargo generate-lockfile
 RUN SCCACHE_CACHE_SIZE=2G SCCACHE_DIR=/app/.cache/sccache RUSTC_WRAPPER=sccache \
     cargo fetch && \
     SCCACHE_CACHE_SIZE=2G SCCACHE_DIR=/app/.cache/sccache RUSTC_WRAPPER=sccache \
