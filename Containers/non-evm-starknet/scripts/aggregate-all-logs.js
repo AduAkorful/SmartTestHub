@@ -38,33 +38,34 @@ function aggregateDir(dir, filter = () => true) {
     .join('\n\n');
 }
 
+const mainReportNote = `Note: After aggregation, only the main AI-enhanced report (${contractName}-report.md) is retained in /app/logs/reports and /app/contracts/${contractName} for this contract.`;
+
 let fullLog = '';
 fullLog += section('StarkNet Container Procedure Log', tryRead('/app/logs/test.log'));
-fullLog += section('Lint (flake8)', aggregateDir('/app/logs/security', f => f.endsWith('-flake8.log')));
-fullLog += section('Security (bandit)', aggregateDir('/app/logs/security', f => f.endsWith('-bandit.log')));
-fullLog += section('Coverage Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.xml') || f.endsWith('.html')));
+fullLog += section('Lint (starknet-lint)', aggregateDir('/app/logs/security', f => f.endsWith('-lint.log')));
+fullLog += section('Security (starknet-audit)', aggregateDir('/app/logs/security', f => f.endsWith('-audit.log')));
 fullLog += section('Compilation Logs', aggregateDir('/app/logs', f => f.endsWith('-compile.log')));
 fullLog += section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
 fullLog += section('Tool Run Confirmation', `
 The following tools' logs were aggregated for ${contractName}:
-- Compilation: compile.log, build logs
-- Testing: test.log, coverage (all files in /app/logs/coverage starting with ${contractName})
-- Lint: flake8 (all files in /app/logs/security starting with ${contractName})
-- Security: Bandit (all files in /app/logs/security starting with ${contractName})
+- Compilation: test.log, compile logs
+- Testing: test.log (pytest)
+- Lint: starknet-lint (all files in /app/logs/security starting with ${contractName})
+- Security: starknet-audit (all files in /app/logs/security starting with ${contractName})
 - AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
 If any section above says "_No output found._", that log was missing or the tool did not run.
+
+${mainReportNote}
 `);
 
 const prompt = `
 You are an expert StarkNet (Cairo) smart contract auditor.
 You are given the **raw logs and reports** from a full StarkNet smart contract testing and analysis pipeline (see below).
-- Organize the output into logical sections: Compilation, Tests, Lint, Security, Coverage, AI/Manual summaries.
+- Organize the output into logical sections: Compilation, Tests, Lint, Security, AI/Manual summaries.
 - For each tool, summarize key findings in clear, actionable language.
 - For each error, warning, or failed test, provide insights to help resolve the issue.
-- For security findings (including Bandit and lint), explain risks and recommend best practices or code changes.
-- If any tool appears missing, failed, or incomplete, clearly indicate this.
+- For security/lint findings, explain risks and recommend best practices or code changes.
 - Highlight important information with bullet points or tables.
-- Include a "Tool Run Confirmation" section stating which logs were present and included.
 - Make the summary comprehensive, structured, and developer-friendly.
 
 Here are the complete logs and reports:
