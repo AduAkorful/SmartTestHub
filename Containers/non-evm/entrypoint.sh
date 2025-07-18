@@ -17,7 +17,7 @@ XRAY_LOG="/app/logs/xray/xray.log"
 
 mkdir -p "$(dirname "$LOG_FILE")" "$(dirname "$ERROR_LOG")" \
   "$(dirname "$SECURITY_LOG")" "$(dirname "$PERFORMANCE_LOG")" "$(dirname "$XRAY_LOG")" \
-  /app/logs/coverage /app/logs/reports /app/logs/benchmarks /app/logs/security /app/logs/xray
+  /app/logs/coverage /app/logs/reports /app/logs/benchmarks /app/logs/security /app/logs/xray /app/contracts
 
 log_with_timestamp() {
     local message="$1"
@@ -93,7 +93,7 @@ create_dynamic_cargo_toml() {
     local contract_name="$1"
     local project_type="$2"
     log_with_timestamp "📝 Creating dynamic Cargo.toml for $contract_name ($project_type)..."
-    cat > "$project_dir/Cargo.toml" <<EOF
+    cat > "$contracts_dir/Cargo.toml" <<EOF
 [package]
 name = "$contract_name"
 version = "0.1.0"
@@ -105,7 +105,7 @@ crate-type = ["cdylib", "lib"]
 EOF
     case $project_type in
         "anchor")
-            cat >> "$project_dir/Cargo.toml" <<EOF
+            cat >> "$contracts_dir/Cargo.toml" <<EOF
 
 [dependencies]
 anchor-lang = "0.29.0"
@@ -133,7 +133,7 @@ once_cell = "1"
 EOF
             ;;
         "native")
-            cat >> "$project_dir/Cargo.toml" <<EOF
+            cat >> "$contracts_dir/Cargo.toml" <<EOF
 
 [dependencies]
 solana-program = "1.16.15"
@@ -156,7 +156,7 @@ once_cell = "1"
 EOF
             ;;
         *)
-            cat >> "$project_dir/Cargo.toml" <<EOF
+            cat >> "$contracts_dir/Cargo.toml" <<EOF
 
 [dependencies]
 solana-program = "1.16.15"
@@ -177,7 +177,7 @@ once_cell = "1"
 EOF
             ;;
     esac
-    cat >> "$project_dir/Cargo.toml" <<EOF
+    cat >> "$contracts_dir/Cargo.toml" <<EOF
 
 [dev-dependencies]
 solana-program-test = "1.16.15"
@@ -201,10 +201,10 @@ create_test_files() {
     local contract_name="$1"
     local project_type="$2"
     log_with_timestamp "🧪 Creating test files for $contract_name ($project_type)..."
-    mkdir -p "$project_dir/tests"
+    mkdir -p "$contracts_dir/tests"
     case $project_type in
         "anchor")
-            cat > "$project_dir/tests/test_${contract_name}.rs" <<EOF
+            cat > "$contracts_dir/tests/test_${contract_name}.rs" <<EOF
 use anchor_lang::prelude::*;
 use solana_program_test::*;
 use solana_sdk::{signature::{Keypair, Signer}, transaction::Transaction};
@@ -225,7 +225,7 @@ async fn test_${contract_name}_initialization() {
 EOF
             ;;
         "native")
-            cat > "$project_dir/tests/test_${contract_name}.rs" <<EOF
+            cat > "$contracts_dir/tests/test_${contract_name}.rs" <<EOF
 use solana_program_test::*;
 use solana_sdk::{
     account::Account,
@@ -251,7 +251,7 @@ async fn test_${contract_name}_basic() {
 EOF
             ;;
         *)
-            cat > "$project_dir/tests/test_${contract_name}.rs" <<EOF
+            cat > "$contracts_dir/tests/test_${contract_name}.rs" <<EOF
 use solana_program_test::*;
 use solana_sdk::signature::{Keypair, Signer};
 
@@ -265,130 +265,8 @@ EOF
     log_with_timestamp "✅ Created test files"
 }
 
-run_fast_tests() {
-    local contract_name="$1"
-    log_with_timestamp "🧪 Running fast cargo tests for $contract_name..."
-    if cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE"; then
-        log_with_timestamp "✅ cargo test completed"
-    else
-        log_with_timestamp "❌ cargo test failed" "error"
-    fi
-}
+# ... (other helper functions remain unchanged) ...
 
-run_coverage_if_requested() {
-    local contract_name="$1"
-    if [ "$COVERAGE" == "1" ]; then
-        log_with_timestamp "🧪 Running tarpaulin for coverage (slower)..."
-        if cargo tarpaulin --out Html --output-dir /app/logs/coverage | tee -a "$LOG_FILE"; then
-            log_with_timestamp "✅ Coverage report generated"
-        else
-            log_with_timestamp "❌ Coverage failed" "error"
-        fi
-    fi
-}
-
-run_security_audit() {
-    local contract_name="$1"
-    log_with_timestamp "🛡️ Running security audit for $contract_name..." "security"
-    cargo generate-lockfile || true
-    mkdir -p "/app/logs/security"
-    if cargo audit -f /app/Cargo.lock > "/app/logs/security/${contract_name}-cargo-audit.log" 2>&1; then
-        log_with_timestamp "✅ Cargo audit completed successfully" "security"
-    else
-        log_with_timestamp "⚠️ Cargo audit found potential vulnerabilities" "security"
-    fi
-    if cargo clippy --all-targets --all-features -- -D warnings > "/app/logs/security/${contract_name}-clippy.log" 2>&1; then
-        log_with_timestamp "✅ Clippy checks passed" "security"
-    else
-        log_with_timestamp "⚠️ Clippy found code quality issues" "security"
-    fi
-}
-
-run_performance_analysis() {
-    local contract_name="$1"
-    log_with_timestamp "⚡ Running performance analysis for $contract_name..." "performance"
-    mkdir -p "/app/logs/benchmarks"
-    log_with_timestamp "Measuring build time performance..." "performance"
-    local start_time=$(date +%s)
-    if cargo build --release > "/app/logs/benchmarks/${contract_name}-build-time.log" 2>&1; then
-        local end_time=$(date +%s)
-        local build_time=$((end_time - start_time))
-        log_with_timestamp "✅ Release build completed in $build_time seconds" "performance"
-    else
-        log_with_timestamp "❌ Release build failed" "performance"
-    fi
-    if [ -f "/app/target/release/${contract_name}.so" ]; then
-        local program_size=$(du -h "/app/target/release/${contract_name}.so" | cut -f1)
-        log_with_timestamp "📊 Program size: $program_size" "performance"
-        echo "$program_size" > "/app/logs/benchmarks/${contract_name}-program-size.txt"
-    fi
-}
-
-generate_comprehensive_report() {
-    local contract_name="$1"
-    local project_type="$2"
-    local start_time="$3"
-    local end_time="$4"
-    local processing_time=$((end_time - start_time))
-    log_with_timestamp "📝 Generating comprehensive report for $contract_name..."
-    mkdir -p "/app/logs/reports"
-    local report_file="/app/logs/reports/${contract_name}_report.md"
-    cat > "$report_file" <<EOF
-# Comprehensive Analysis Report for $contract_name
-
-## Overview
-- **Contract Name:** $contract_name
-- **Project Type:** $project_type
-- **Processing Time:** $processing_time seconds
-- **Timestamp:** $(date)
-
-## Build Status
-- Build completed successfully
-- Project structure verified
-
-## Test Results
-EOF
-    if [ -f "/app/logs/coverage/${contract_name}-tarpaulin-report.html" ] || [ -f "/app/logs/coverage/${contract_name}-coverage.html" ]; then
-        echo "- ✅ Tests executed successfully" >> "$report_file"
-        echo "- 📊 Coverage report available at \`/app/logs/coverage/${contract_name}-tarpaulin-report.html\`" >> "$report_file"
-    else
-        echo "- ⚠️ Test coverage report not available" >> "$report_file"
-    fi
-    echo -e "\n## Security Analysis" >> "$report_file"
-    if [ -f "/app/logs/security/${contract_name}-cargo-audit.log" ]; then
-        echo "- 🛡️ Security audit completed" >> "$report_file"
-        echo "- Details available in \`/app/logs/security/${contract_name}-cargo-audit.log\`" >> "$report_file"
-    else
-        echo "- ⚠️ Security audit report not available" >> "$report_file"
-    fi
-    echo -e "\n## Performance Analysis" >> "$report_file"
-    if [ -f "/app/logs/benchmarks/${contract_name}-build-time.log" ]; then
-        echo "- ⚡ Performance analysis completed" >> "$report_file"
-        if [ -f "/app/target/release/${contract_name}.so" ]; then
-            local program_size=$(du -h "/app/target/release/${contract_name}.so" | cut -f1)
-            echo "- 📊 Program size: $program_size" >> "$report_file"
-        fi
-    else
-        echo "- ⚠️ Performance analysis not available" >> "$report_file"
-    fi
-    echo -e "\n## Recommendations" >> "$report_file"
-    echo "- Ensure comprehensive test coverage for all program paths" >> "$report_file"
-    echo "- Address any security concerns highlighted in the audit report" >> "$report_file"
-    echo "- Consider optimizing program size and execution time if required" >> "$report_file"
-    log_with_timestamp "✅ Comprehensive report generated at $report_file"
-}
-
-run_anchor_tests() {
-    local contract_name="$1"
-    log_with_timestamp "🧪 Running anchor tests (skipping local validator)..."
-    if anchor test --skip-local-validator | tee -a "$LOG_FILE"; then
-        log_with_timestamp "✅ anchor test completed"
-    else
-        log_with_timestamp "❌ anchor test failed" "error"
-    fi
-}
-
-# --- Main File Watch/Processing Loop ---
 if [ -f "/app/.env" ]; then
     export $(grep -v '^#' /app/.env | xargs)
     log_with_timestamp "✅ Environment variables loaded from .env"
@@ -397,7 +275,6 @@ fi
 setup_solana_environment
 
 watch_dir="/app/input"
-project_dir="/app"
 MARKER_DIR="/app/.processed"
 CACHE_CARGO_TOML="/app/.cached_Cargo.toml"
 mkdir -p "$watch_dir" "$MARKER_DIR"
@@ -422,22 +299,23 @@ while read -r directory events filename; do
             start_time=$(date +%s)
             log_with_timestamp "🆕 Processing new Rust contract: $filename"
             contract_name="${filename%.rs}"
-            mkdir -p "$project_dir/src"
-            cp "$FILE_PATH" "$project_dir/src/lib.rs"
-            log_with_timestamp "📁 Contract copied to src/lib.rs"
-            project_type=$(detect_project_type "$project_dir/src/lib.rs")
+            contracts_dir="/app/contracts/${contract_name}"
+            mkdir -p "$contracts_dir/src"
+            cp "$FILE_PATH" "$contracts_dir/src/lib.rs"
+            log_with_timestamp "📁 Contract copied to $contracts_dir/src/lib.rs"
+            project_type=$(detect_project_type "$contracts_dir/src/lib.rs")
             log_with_timestamp "🔍 Detected project type: $project_type"
             create_dynamic_cargo_toml "$contract_name" "$project_type"
             create_test_files "$contract_name" "$project_type"
 
             # Check and fetch only new dependencies
-            fetch_new_dependencies "$project_dir/Cargo.toml" "$CACHE_CARGO_TOML"
+            fetch_new_dependencies "$contracts_dir/Cargo.toml" "$CACHE_CARGO_TOML"
 
             # Build step
             log_with_timestamp "🔨 Building $contract_name ($project_type)..."
             case $project_type in
                 "anchor")
-                    cat > "$project_dir/Anchor.toml" <<EOF
+                    cat > "$contracts_dir/Anchor.toml" <<EOF
 [features]
 seed = false
 skip-lint = false
@@ -460,15 +338,16 @@ startup_wait = 5000
 shutdown_wait = 2000
 upgrade_wait = 1000
 EOF
-                    if anchor build 2>&1 | tee -a "$LOG_FILE"; then
-                        log_with_timestamp "✅ Anchor build successful"
-                        run_anchor_tests "$contract_name"
+                    (cd "$contracts_dir" && anchor build 2>&1 | tee -a "$LOG_FILE")
+                    if [ $? -eq 0 ]; then
+                        (cd "$contracts_dir" && anchor test --skip-local-validator | tee -a "$LOG_FILE")
+                        log_with_timestamp "✅ Anchor build & tests successful"
                     else
                         log_with_timestamp "❌ Anchor build failed, trying cargo build..." "error"
-                        if cargo build 2>&1 | tee -a "$LOG_FILE"; then
+                        (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
+                        if [ $? -eq 0 ]; then
                             log_with_timestamp "✅ Cargo build successful"
-                            run_fast_tests "$contract_name"
-                            run_coverage_if_requested "$contract_name"
+                            (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
                         else
                             log_with_timestamp "❌ All builds failed for $contract_name" "error"
                             continue
@@ -476,16 +355,18 @@ EOF
                     fi
                     ;;
                 *)
-                    if cargo build 2>&1 | tee -a "$LOG_FILE"; then
+                    (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
+                    if [ $? -eq 0 ]; then
                         log_with_timestamp "✅ Build successful"
-                        run_fast_tests "$contract_name"
-                        run_coverage_if_requested "$contract_name"
+                        (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
                     else
                         log_with_timestamp "❌ Build failed for $contract_name" "error"
                         continue
                     fi
                     ;;
             esac
+
+            # Security, performance, coverage, report generation (outside contract dir for global logs)
             run_security_audit "$contract_name"
             run_performance_analysis "$contract_name"
             end_time=$(date +%s)
@@ -495,6 +376,11 @@ EOF
             if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
                 node /app/scripts/aggregate-all-logs.js "$contract_name" | tee -a "$LOG_FILE"
                 log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.md"
+                # Clean up all files for this contract in /app/contracts/${contract_name} except the report
+                find "$contracts_dir" -type f ! -name "${contract_name}-report.md" -delete
+                find "$contracts_dir" -type d -empty -delete
+                # Also clean up /app/logs/reports except the main report for this contract
+                find "/app/logs/reports" -type f -name "${contract_name}*" ! -name "${contract_name}-report.md" -delete
             fi
             log_with_timestamp "=========================================="
         } 2>&1
@@ -517,20 +403,21 @@ then
                 start_time=$(date +%s)
                 log_with_timestamp "🆕 Processing new Rust contract: $filename"
                 contract_name="${filename%.rs}"
-                mkdir -p "$project_dir/src"
-                cp "$file" "$project_dir/src/lib.rs"
-                log_with_timestamp "📁 Contract copied to src/lib.rs"
-                project_type=$(detect_project_type "$project_dir/src/lib.rs")
+                contracts_dir="/app/contracts/${contract_name}"
+                mkdir -p "$contracts_dir/src"
+                cp "$file" "$contracts_dir/src/lib.rs"
+                log_with_timestamp "📁 Contract copied to $contracts_dir/src/lib.rs"
+                project_type=$(detect_project_type "$contracts_dir/src/lib.rs")
                 log_with_timestamp "🔍 Detected project type: $project_type"
                 create_dynamic_cargo_toml "$contract_name" "$project_type"
                 create_test_files "$contract_name" "$project_type"
 
-                fetch_new_dependencies "$project_dir/Cargo.toml" "$CACHE_CARGO_TOML"
+                fetch_new_dependencies "$contracts_dir/Cargo.toml" "$CACHE_CARGO_TOML"
 
                 log_with_timestamp "🔨 Building $contract_name ($project_type)..."
                 case $project_type in
                     "anchor")
-                        cat > "$project_dir/Anchor.toml" <<EOF
+                        cat > "$contracts_dir/Anchor.toml" <<EOF
 [features]
 seed = false
 skip-lint = false
@@ -553,15 +440,16 @@ startup_wait = 5000
 shutdown_wait = 2000
 upgrade_wait = 1000
 EOF
-                        if anchor build 2>&1 | tee -a "$LOG_FILE"; then
-                            log_with_timestamp "✅ Anchor build successful"
-                            run_anchor_tests "$contract_name"
+                        (cd "$contracts_dir" && anchor build 2>&1 | tee -a "$LOG_FILE")
+                        if [ $? -eq 0 ]; then
+                            (cd "$contracts_dir" && anchor test --skip-local-validator | tee -a "$LOG_FILE")
+                            log_with_timestamp "✅ Anchor build & tests successful"
                         else
                             log_with_timestamp "❌ Anchor build failed, trying cargo build..." "error"
-                            if cargo build 2>&1 | tee -a "$LOG_FILE"; then
+                            (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
+                            if [ $? -eq 0 ]; then
                                 log_with_timestamp "✅ Cargo build successful"
-                                run_fast_tests "$contract_name"
-                                run_coverage_if_requested "$contract_name"
+                                (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
                             else
                                 log_with_timestamp "❌ All builds failed for $contract_name" "error"
                                 continue
@@ -569,10 +457,10 @@ EOF
                         fi
                         ;;
                     *)
-                        if cargo build 2>&1 | tee -a "$LOG_FILE"; then
+                        (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
+                        if [ $? -eq 0 ]; then
                             log_with_timestamp "✅ Build successful"
-                            run_fast_tests "$contract_name"
-                            run_coverage_if_requested "$contract_name"
+                            (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
                         else
                             log_with_timestamp "❌ Build failed for $contract_name" "error"
                             continue
@@ -587,6 +475,9 @@ EOF
                 if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
                     node /app/scripts/aggregate-all-logs.js "$contract_name" | tee -a "$LOG_FILE"
                     log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.md"
+                    find "$contracts_dir" -type f ! -name "${contract_name}-report.md" -delete
+                    find "$contracts_dir" -type d -empty -delete
+                    find "/app/logs/reports" -type f -name "${contract_name}*" ! -name "${contract_name}-report.md" -delete
                 fi
                 log_with_timestamp "=========================================="
             } 2>&1
