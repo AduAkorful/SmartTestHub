@@ -67,9 +67,7 @@ You are given the **raw logs and reports** from a full smart contract testing an
 - For each tool, summarize key findings in clear, actionable language.
 - For each error, warning, or failed test, provide insights to help resolve the issue.
 - For security findings, explain risks and recommend best practices or code changes.
-- If any tool appears missing, failed, or incomplete, clearly indicate this.
 - Highlight important information with bullet points or tables.
-- Include a "Tool Run Confirmation" section stating which logs were present and included.
 - Make the summary comprehensive, structured, and developer-friendly.
 
 Here are the complete logs and reports:
