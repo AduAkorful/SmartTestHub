@@ -43,6 +43,8 @@ function aggregateDir(dir, filter = () => true) {
     .join('\n\n');
 }
 
+const mainReportNote = `Note: After aggregation, only the main AI-enhanced report (${contractName}-report.md) is retained in /app/logs/reports and /app/contracts/${contractName} for this contract.`;
+
 let fullLog = '';
 fullLog += section('Non-EVM Container Procedure Log', tryRead('/app/logs/test.log'));
 fullLog += section('Security Audit (Cargo Audit)', aggregateDir('/app/logs/security', f => f.endsWith('-cargo-audit.log')));
@@ -59,6 +61,8 @@ The following tools' logs were aggregated for ${contractName}:
 - Performance: All logs in /app/logs/benchmarks starting with ${contractName}
 - AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
 If any section above says "_No output found._", that log was missing or the tool did not run.
+
+${mainReportNote}
 `);
 
 const prompt = `
@@ -68,7 +72,6 @@ You are given the **raw logs and reports** from a full smart contract testing an
 - For each tool, summarize key findings in clear, actionable language.
 - For each error, warning, or failed test, provide insights to help resolve the issue.
 - For security findings, explain risks and recommend best practices or code changes.
-- If any tool appears missing, failed, or incomplete, clearly indicate this.
 - Highlight important information with bullet points or tables.
 - Include a "Tool Run Confirmation" section stating which logs were present and included.
 - Make the summary comprehensive, structured, and developer-friendly.
