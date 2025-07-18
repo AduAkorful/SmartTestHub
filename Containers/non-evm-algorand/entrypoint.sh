@@ -6,7 +6,7 @@ ERROR_LOG="/app/logs/error.log"
 SECURITY_LOG="/app/logs/security/security-audit.log"
 
 mkdir -p "$(dirname "$LOG_FILE")" "$(dirname "$ERROR_LOG")" "$(dirname "$SECURITY_LOG")" \
-  /app/logs/coverage /app/logs/reports /app/logs/benchmarks /app/logs/security /app/logs/xray
+  /app/logs/coverage /app/logs/reports /app/logs/benchmarks /app/logs/security /app/logs/xray /app/contracts
 
 log_with_timestamp() {
     local message="$1"
@@ -42,13 +42,14 @@ while read -r directory events filename; do
         {
             start_time=$(date +%s)
             CONTRACT_NAME="${filename%.py}"
+            CONTRACTS_DIR="/app/contracts/${CONTRACT_NAME}"
+            mkdir -p "$CONTRACTS_DIR/src" "$CONTRACTS_DIR/tests"
 
-            mkdir -p /app/src /app/tests
-            cp "$FILE_PATH" /app/src/contract.py
+            cp "$FILE_PATH" "$CONTRACTS_DIR/src/contract.py"
 
             # Auto-generate a basic test if none exists
-            if [ ! -f "/app/tests/test_${CONTRACT_NAME}.py" ]; then
-                cat > "/app/tests/test_${CONTRACT_NAME}.py" <<EOF
+            if [ ! -f "$CONTRACTS_DIR/tests/test_${CONTRACT_NAME}.py" ]; then
+                cat > "$CONTRACTS_DIR/tests/test_${CONTRACT_NAME}.py" <<EOF
 from pyteal import *
 from src.contract import approval_program
 
@@ -60,21 +61,26 @@ EOF
             fi
 
             log_with_timestamp "🧪 Running pytest for $CONTRACT_NAME..."
-            pytest --cov=src --cov-report=term --cov-report=xml:/app/logs/coverage/${CONTRACT_NAME}-coverage.xml --junitxml=/app/logs/reports/${CONTRACT_NAME}-junit.xml /app/tests/ | tee /app/logs/test.log
+            pytest --cov="$CONTRACTS_DIR/src" --cov-report=term --cov-report=xml:/app/logs/coverage/${CONTRACT_NAME}-coverage.xml --junitxml=/app/logs/reports/${CONTRACT_NAME}-junit.xml "$CONTRACTS_DIR/tests/" | tee /app/logs/test.log
 
             log_with_timestamp "🔎 Running flake8 linter..."
-            flake8 /app/src/contract.py > /app/logs/security/${CONTRACT_NAME}-flake8.log 2>&1 || true
+            flake8 "$CONTRACTS_DIR/src/contract.py" > /app/logs/security/${CONTRACT_NAME}-flake8.log 2>&1 || true
 
             log_with_timestamp "🔒 Running bandit security scan..."
-            bandit -r /app/src/contract.py -f txt -o /app/logs/security/${CONTRACT_NAME}-bandit.log || true
+            bandit -r "$CONTRACTS_DIR/src/contract.py" -f txt -o /app/logs/security/${CONTRACT_NAME}-bandit.log || true
 
             log_with_timestamp "🛠️ Compiling contract with algokit (dry run)..."
-            algokit compile -p /app/src/contract.py > /app/logs/${CONTRACT_NAME}-algokit.log 2>&1 || true
+            algokit compile -p "$CONTRACTS_DIR/src/contract.py" > /app/logs/${CONTRACT_NAME}-algokit.log 2>&1 || true
 
             # Aggregate logs and generate report (Node.js)
             if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
                 node /app/scripts/aggregate-all-logs.js "$CONTRACT_NAME" | tee -a "$LOG_FILE"
                 log_with_timestamp "✅ Aggregated report generated: /app/logs/reports/${CONTRACT_NAME}-report.md"
+                # Clean up all files for this contract in /app/contracts/${CONTRACT_NAME} except the report
+                find "$CONTRACTS_DIR" -type f ! -name "${CONTRACT_NAME}-report.md" -delete
+                find "$CONTRACTS_DIR" -type d -empty -delete
+                # Also clean up /app/logs/reports except the main report for this contract
+                find "/app/logs/reports" -type f -name "${CONTRACT_NAME}*" ! -name "${CONTRACT_NAME}-report.md" -delete
             fi
 
             end_time=$(date +%s)
@@ -99,12 +105,13 @@ then
             {
                 start_time=$(date +%s)
                 CONTRACT_NAME="${filename%.py}"
+                CONTRACTS_DIR="/app/contracts/${CONTRACT_NAME}"
+                mkdir -p "$CONTRACTS_DIR/src" "$CONTRACTS_DIR/tests"
 
-                mkdir -p /app/src /app/tests
-                cp "$file" /app/src/contract.py
+                cp "$file" "$CONTRACTS_DIR/src/contract.py"
 
-                if [ ! -f "/app/tests/test_${CONTRACT_NAME}.py" ]; then
-                    cat > "/app/tests/test_${CONTRACT_NAME}.py" <<EOF
+                if [ ! -f "$CONTRACTS_DIR/tests/test_${CONTRACT_NAME}.py" ]; then
+                    cat > "$CONTRACTS_DIR/tests/test_${CONTRACT_NAME}.py" <<EOF
 from pyteal import *
 from src.contract import approval_program
 
@@ -116,20 +123,23 @@ EOF
                 fi
 
                 log_with_timestamp "🧪 Running pytest for $CONTRACT_NAME..."
-                pytest --cov=src --cov-report=term --cov-report=xml:/app/logs/coverage/${CONTRACT_NAME}-coverage.xml --junitxml=/app/logs/reports/${CONTRACT_NAME}-junit.xml /app/tests/ | tee /app/logs/test.log
+                pytest --cov="$CONTRACTS_DIR/src" --cov-report=term --cov-report=xml:/app/logs/coverage/${CONTRACT_NAME}-coverage.xml --junitxml=/app/logs/reports/${CONTRACT_NAME}-junit.xml "$CONTRACTS_DIR/tests/" | tee /app/logs/test.log
 
                 log_with_timestamp "🔎 Running flake8 linter..."
-                flake8 /app/src/contract.py > /app/logs/security/${CONTRACT_NAME}-flake8.log 2>&1 || true
+                flake8 "$CONTRACTS_DIR/src/contract.py" > /app/logs/security/${CONTRACT_NAME}-flake8.log 2>&1 || true
 
                 log_with_timestamp "🔒 Running bandit security scan..."
-                bandit -r /app/src/contract.py -f txt -o /app/logs/security/${CONTRACT_NAME}-bandit.log || true
+                bandit -r "$CONTRACTS_DIR/src/contract.py" -f txt -o /app/logs/security/${CONTRACT_NAME}-bandit.log || true
 
                 log_with_timestamp "🛠️ Compiling contract with algokit (dry run)..."
-                algokit compile -p /app/src/contract.py > /app/logs/${CONTRACT_NAME}-algokit.log 2>&1 || true
+                algokit compile -p "$CONTRACTS_DIR/src/contract.py" > /app/logs/${CONTRACT_NAME}-algokit.log 2>&1 || true
 
                 if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
                     node /app/scripts/aggregate-all-logs.js "$CONTRACT_NAME" | tee -a "$LOG_FILE"
                     log_with_timestamp "✅ Aggregated report generated: /app/logs/reports/${CONTRACT_NAME}-report.md"
+                    find "$CONTRACTS_DIR" -type f ! -name "${CONTRACT_NAME}-report.md" -delete
+                    find "$CONTRACTS_DIR" -type d -empty -delete
+                    find "/app/logs/reports" -type f -name "${CONTRACT_NAME}*" ! -name "${CONTRACT_NAME}-report.md" -delete
                 fi
 
                 end_time=$(date +%s)
