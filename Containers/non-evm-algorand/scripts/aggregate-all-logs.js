@@ -38,6 +38,8 @@ function aggregateDir(dir, filter = () => true) {
     .join('\n\n');
 }
 
+const mainReportNote = `Note: After aggregation, only the main AI-enhanced report (${contractName}-report.md) is retained in /app/logs/reports and /app/contracts/${contractName} for this contract.`;
+
 let fullLog = '';
 fullLog += section('Algorand Container Procedure Log', tryRead('/app/logs/test.log'));
 fullLog += section('Lint (flake8)', aggregateDir('/app/logs/security', f => f.endsWith('-flake8.log')));
@@ -52,6 +54,8 @@ The following tools' logs were aggregated for ${contractName}:
 - Security: Bandit (all files in /app/logs/security starting with ${contractName})
 - AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
 If any section above says "_No output found._", that log was missing or the tool did not run.
+
+${mainReportNote}
 `);
 
 const prompt = `
