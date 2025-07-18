@@ -27,7 +27,9 @@ log_with_timestamp() {
 }
 
 create_simplified_hardhat_config() {
-    log_with_timestamp "📝 Creating simplified Hardhat configuration..."
+    # This function is now called per contract, with $1 as contract_name
+    contract_name="$1"
+    log_with_timestamp "📝 Creating per-contract Hardhat configuration for $contract_name..."
     cat > "/app/hardhat.config.js" <<EOF
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -45,7 +47,7 @@ module.exports = {
     localhost: { url: "http://127.0.0.1:8545" },
   },
   paths: {
-    sources: "./contracts",
+    sources: "./contracts/${contract_name}",
     tests: "./test",
     cache: "./cache",
     artifacts: "./artifacts",
@@ -53,7 +55,7 @@ module.exports = {
 };
 EOF
     ln -sf "/app/hardhat.config.js" "/app/config/hardhat.config.js"
-    log_with_timestamp "✅ Created simplified Hardhat configuration"
+    log_with_timestamp "✅ Created Hardhat config for $contract_name"
 
     cat > "/app/config/slither.config.json" <<EOF
 {
@@ -135,7 +137,7 @@ EOF
     log_with_timestamp "✅ Created simple contract analysis script"
 }
 
-create_simplified_hardhat_config
+create_simplified_hardhat_config "default" # Create initial config for startup
 create_simple_analysis_script
 
 log_with_timestamp "📡 Watching /app/input for incoming Solidity files..."
@@ -163,13 +165,18 @@ while read -r directory events filename; do
 
     {
       log_with_timestamp "🆕 Detected Solidity contract: $filename"
-      mkdir -p /app/contracts
-      cp "/app/input/$filename" "/app/contracts/$filename"
-      log_with_timestamp "📁 Copied $filename to contracts directory"
 
       contract_name=$(basename "$filename" .sol)
-      contract_path="/app/contracts/$filename"
+      contract_subdir="/app/contracts/$contract_name"
+      mkdir -p "$contract_subdir"
+      cp "$FILE_PATH" "$contract_subdir/$filename"
+      log_with_timestamp "📁 Copied $filename to $contract_subdir"
+
+      contract_path="$contract_subdir/$filename"
       test_file="./test/${contract_name}.t.sol"
+
+      # ==== Create per-contract Hardhat config ====
+      create_simplified_hardhat_config "$contract_name"
 
       # ==== AUTO-GENERATE TEST FILE IF MISSING ====
       if [ ! -f "$test_file" ]; then
@@ -179,7 +186,7 @@ while read -r directory events filename; do
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
-import "../contracts/${contract_name}.sol";
+import "../contracts/${contract_name}/${filename}";
 
 contract ${contract_name}Test is Test {
     ${contract_name} public contractInstance;
@@ -199,7 +206,7 @@ EOF
 
       log_with_timestamp "🔨 Attempting direct Solidity compilation..."
       mkdir -p /app/artifacts
-      if solc --bin --abi --optimize --overwrite -o /app/artifacts /app/contracts/$filename 2>/dev/null; then
+      if solc --bin --abi --optimize --overwrite -o /app/artifacts "$contract_path" 2>/dev/null; then
         log_with_timestamp "✅ Direct Solidity compilation successful"
       else
         log_with_timestamp "⚠️ Direct compilation had issues, continuing with analysis"
@@ -207,14 +214,14 @@ EOF
 
       # ==== TAGGED LOG OUTPUTS ====
       log_with_timestamp "🧪 Running Foundry tests with gas reporting..."
-      if forge test --gas-report --json > ./logs/foundry/${contract_name}-foundry-test-report.json 2>&1 | tee -a "$LOG_FILE"; then
+      if forge test --contracts "$contract_subdir" --gas-report --json > ./logs/foundry/${contract_name}-foundry-test-report.json 2>&1 | tee -a "$LOG_FILE"; then
         log_with_timestamp "✅ Foundry tests passed with gas report"
       else
         log_with_timestamp "❌ Foundry tests failed - check logs/foundry/${contract_name}-foundry-test-report.json"
       fi
 
       log_with_timestamp "📊 Generating Foundry coverage report..."
-      if forge coverage --report lcov --report-file ./logs/coverage/${contract_name}-foundry-lcov.info 2>&1 | tee -a "$LOG_FILE"; then
+      if forge coverage --contracts "$contract_subdir" --report lcov --report-file ./logs/coverage/${contract_name}-foundry-lcov.info 2>&1 | tee -a "$LOG_FILE"; then
         log_with_timestamp "✅ Foundry coverage report generated"
       else
         log_with_timestamp "⚠️ Foundry coverage generation failed"
@@ -309,6 +316,10 @@ EOF
         log_with_timestamp "❌ AI-enhanced aggregation failed (see log for details)"
       fi
       log_with_timestamp "=========================================="
+
+      # Optional: clean up contract subdir after run, keep {contract_name}-report.md
+      find "$contract_subdir" -type f ! -name "${contract_name}-report.md" -delete
+      find "$contract_subdir" -type d -empty -delete
 
     } 2>&1
   fi
