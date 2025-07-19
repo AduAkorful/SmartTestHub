@@ -37,6 +37,9 @@ RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked 
     cargo install cargo-audit --locked && \
     rustup component add clippy
 
+# Install node dependencies for log aggregation (no package.json required)
+RUN npm install axios dotenv xml2js
+
 WORKDIR /app
 
 # Copy only the Cargo.toml for dependency layer caching
