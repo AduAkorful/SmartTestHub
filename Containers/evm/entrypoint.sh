@@ -26,10 +26,28 @@ log_with_timestamp() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
+# Detect the contract name (case-sensitive!) from the Solidity file
+detect_contract_name() {
+    local sol_file="$1"
+    # Find the first contract definition in the file, supports contract, abstract contract, interface, library
+    grep -E '^(contract|abstract contract|interface|library)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*' "$sol_file" | \
+    head -1 | \
+    sed -E 's/^(contract|abstract contract|interface|library)[[:space:]]+([A-Za-z_][A-Za-z0-9_]*).*/\2/'
+}
+
 create_simplified_hardhat_config() {
-    # This function is now called per contract, with $1 as contract_name
     contract_name="$1"
-    log_with_timestamp "📝 Creating per-contract Hardhat configuration for $contract_name..."
+    contract_path="$2"
+    # If contract_path is given, detect the actual contract name for Hardhat config and imports
+    if [ -f "$contract_path" ]; then
+        detected_name=$(detect_contract_name "$contract_path")
+        if [ -z "$detected_name" ]; then
+            detected_name="$contract_name"
+        fi
+    else
+        detected_name="$contract_name"
+    fi
+    log_with_timestamp "📝 Creating per-contract Hardhat configuration for $contract_name (contract identifier: $detected_name)..."
     cat > "/app/hardhat.config.js" <<EOF
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -78,6 +96,10 @@ create_simple_analysis_script() {
     cat > "/app/scripts/analyze-contract.js" <<EOF
 const fs = require('fs');
 const path = require('path');
+function detectContractName(content) {
+    const match = content.match(/^(contract|abstract contract|interface|library)\\s+([A-Za-z_][A-Za-z0-9_]*)/m);
+    return match ? match[2] : null;
+}
 function analyzeContract(filePath) {
     console.log('Contract Analysis');
     console.log('================');
@@ -94,15 +116,17 @@ function analyzeContract(filePath) {
         console.log(\`Lines: \${lines.length}\`);
         const hasSPDX = content.includes('SPDX-License-Identifier');
         console.log(\`SPDX License: \${hasSPDX ? 'Yes ✅' : 'No ❌'}\`);
+        const contractName = detectContractName(content);
+        console.log(\`Detected contract identifier: \${contractName || 'N/A'}\`);
         console.log('\\nFunction Detection:');
         const funcs = [
-            { name: 'Constructor', regex: /constructor\s*\(/g },
-            { name: 'Transfer', regex: /\btransfer\s*\(/g },
-            { name: 'TransferFrom', regex: /\btransferFrom\s*\(/g },
-            { name: 'Approve', regex: /\bapprove\s*\(/g },
-            { name: 'SafeMath', regex: /\busing\s+SafeMath\b/g },
-            { name: 'Reentrancy Guard', regex: /\bnonReentrant\b|\breentrant\b/g },
-            { name: 'Ownable', regex: /\bonlyOwner\b|\bOwnable\b/g }
+            { name: 'Constructor', regex: /constructor\\s*\\(/g },
+            { name: 'Transfer', regex: /\\btransfer\\s*\\(/g },
+            { name: 'TransferFrom', regex: /\\btransferFrom\\s*\\(/g },
+            { name: 'Approve', regex: /\\bapprove\\s*\\(/g },
+            { name: 'SafeMath', regex: /\\busing\\s+SafeMath\\b/g },
+            { name: 'Reentrancy Guard', regex: /\\bnonReentrant\\b|\\breentrant\\b/g },
+            { name: 'Ownable', regex: /\\bonlyOwner\\b|\\bOwnable\\b/g }
         ];
         funcs.forEach(func => {
             const matches = content.match(func.regex);
@@ -110,13 +134,13 @@ function analyzeContract(filePath) {
         });
         console.log('\\nSimple Security Checks:');
         const checks = [
-            { name: 'tx.origin usage (avoid)', regex: /\btx\.origin\b/g, safe: false },
-            { name: 'selfdestruct/suicide', regex: /\bselfdestruct\b|\bsuicide\b/g, safe: false },
-            { name: 'delegatecall usage (caution)', regex: /\bdelegatecall\b/g, safe: false },
-            { name: 'assembly blocks (caution)', regex: /\bassembly\s*{/g, safe: false },
-            { name: 'SafeMath/safe math operations', regex: /\busing\s+SafeMath\b|\.add\(|\.sub\(|\.mul\(|\.div\(/g, safe: true },
-            { name: 'require statements', regex: /\brequire\s*\(/g, safe: true },
-            { name: 'revert statements', regex: /\brevert\s*\(/g, safe: true }
+            { name: 'tx.origin usage (avoid)', regex: /\\btx\\.origin\\b/g, safe: false },
+            { name: 'selfdestruct/suicide', regex: /\\bselfdestruct\\b|\\bsuicide\\b/g, safe: false },
+            { name: 'delegatecall usage (caution)', regex: /\\bdelegatecall\\b/g, safe: false },
+            { name: 'assembly blocks (caution)', regex: /\\bassembly\\s*{/g, safe: false },
+            { name: 'SafeMath/safe math operations', regex: /\\busing\\s+SafeMath\\b|\\.add\\(|\\.sub\\(|\\.mul\\(|\\.div\\(/g, safe: true },
+            { name: 'require statements', regex: /\\brequire\\s*\\(/g, safe: true },
+            { name: 'revert statements', regex: /\\brevert\\s*\\(/g, safe: true }
         ];
         checks.forEach(check => {
             const matches = content.match(check.regex);
@@ -137,7 +161,7 @@ EOF
     log_with_timestamp "✅ Created simple contract analysis script"
 }
 
-create_simplified_hardhat_config "default" # Create initial config for startup
+create_simplified_hardhat_config "default"
 create_simple_analysis_script
 
 log_with_timestamp "📡 Watching /app/input for incoming Solidity files..."
@@ -175,12 +199,18 @@ while read -r directory events filename; do
       contract_path="$contract_subdir/$filename"
       test_file="./test/${contract_name}.t.sol"
 
+      # ==== Detect actual contract identifier ====
+      detected_name=$(detect_contract_name "$contract_path")
+      if [ -z "$detected_name" ]; then
+        detected_name="$contract_name"
+      fi
+
       # ==== Create per-contract Hardhat config ====
-      create_simplified_hardhat_config "$contract_name"
+      create_simplified_hardhat_config "$contract_name" "$contract_path"
 
       # ==== AUTO-GENERATE TEST FILE IF MISSING ====
       if [ ! -f "$test_file" ]; then
-        log_with_timestamp "📝 Auto-generating Foundry test file for $contract_name"
+        log_with_timestamp "📝 Auto-generating Foundry test file for $contract_name (contract identifier: $detected_name)"
         cat > "$test_file" <<EOF
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
@@ -188,11 +218,11 @@ pragma solidity ^0.8.20;
 import "forge-std/Test.sol";
 import "../contracts/${contract_name}/${filename}";
 
-contract ${contract_name}Test is Test {
-    ${contract_name} public contractInstance;
+contract ${detected_name}Test is Test {
+    ${detected_name} public contractInstance;
 
     function setUp() public {
-        contractInstance = new ${contract_name}();
+        contractInstance = new ${detected_name}();
     }
 
     // TODO: Add more specific tests!
@@ -247,7 +277,7 @@ EOF
 
       log_with_timestamp "📏 Analyzing contract size..."
       filesize=$(stat -c%s "$contract_path")
-      echo "Contract: $contract_name" > "./logs/reports/${contract_name}-size.txt"
+      echo "Contract: $detected_name" > "./logs/reports/${contract_name}-size.txt"
       echo "Source size: $filesize bytes" >> "./logs/reports/${contract_name}-size.txt"
 
       if [ -f "/app/artifacts/${contract_name}.bin" ]; then
@@ -265,11 +295,11 @@ EOF
 
       log_with_timestamp "📋 Creating test summary..."
       cat > "./logs/reports/test-summary-${contract_name}.md" <<EOF
-# Test Summary for ${contract_name}
+# Test Summary for ${detected_name}
 
 ## Contract Information
 - **File**: ${filename}
-- **Contract Name**: ${contract_name}
+- **Contract Name**: ${detected_name}
 - **Test Date**: $(date '+%Y-%m-%d %H:%M:%S')
 - **Source Size**: ${filesize} bytes
 
