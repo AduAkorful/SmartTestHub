@@ -9,9 +9,9 @@ use solana_program::{
 entrypoint!(process_instruction);
 
 fn process_instruction(
-    _program_id: &Pubkey,
-    _accounts: &[AccountInfo],
-    _instruction_data: &[u8],
+    _program_id: &Pubkey,         // unused, prefixed with _
+    _accounts: &[AccountInfo],    // unused, prefixed with _
+    _instruction_data: &[u8],     // unused, prefixed with _
 ) -> ProgramResult {
     msg!("Hello, Solana!");
     Ok(())
