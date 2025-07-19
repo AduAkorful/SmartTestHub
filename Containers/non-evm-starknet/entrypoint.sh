@@ -76,3 +76,55 @@ while read -r directory events filename; do
         } 2>&1
     fi
 done
+then
+    log_with_timestamp "❌ inotifywait failed, using fallback polling mechanism" "error"
+    while true; do
+        for file in "$watch_dir"/*.cairo; do
+            [ ! -f "$file" ] && continue
+            filename=$(basename "$file")
+            MARKER_FILE="$MARKER_DIR/$filename.processed"
+            CURRENT_HASH=$(sha256sum "$file" | awk '{print $1}')
+            if [ -f "$MARKER_FILE" ]; then
+                LAST_HASH=$(cat "$MARKER_FILE")
+                [ "$CURRENT_HASH" == "$LAST_HASH" ] && log_with_timestamp "⏭️ Skipping duplicate processing of $filename (same content hash)" && continue
+            fi
+            echo "$CURRENT_HASH" > "$MARKER_FILE"
+            {
+                start_time=$(date +%s)
+                CONTRACT_NAME="${filename%.cairo}"
+                CONTRACTS_DIR="/app/contracts/${CONTRACT_NAME}"
+                mkdir -p "$CONTRACTS_DIR/src" "$CONTRACTS_DIR/tests"
+
+                cp "$file" "$CONTRACTS_DIR/src/contract.cairo"
+
+                python3 /app/scripts/generate_starknet_tests.py "$CONTRACTS_DIR/src/contract.cairo" "$CONTRACTS_DIR/tests/test_${CONTRACT_NAME}.py"
+                log_with_timestamp "🧪 Generated comprehensive tests for $CONTRACT_NAME"
+
+                log_with_timestamp "🧪 Running pytest for $CONTRACT_NAME..."
+                pytest --maxfail=1 --disable-warnings "$CONTRACTS_DIR/tests/" | tee "$LOG_FILE"
+
+                log_with_timestamp "🔎 Running flake8 linter..."
+                flake8 "$CONTRACTS_DIR/src/contract.cairo" > /app/logs/security/${CONTRACT_NAME}-flake8.log 2>&1 || true
+
+                log_with_timestamp "🔒 Running bandit security scan..."
+                bandit -r "$CONTRACTS_DIR/src/contract.cairo" -f txt -o /app/logs/security/${CONTRACT_NAME}-bandit.log || true
+
+                log_with_timestamp "🛠️ Compiling contract with cairo-compile..."
+                cairo-compile "$CONTRACTS_DIR/src/contract.cairo" --output /app/logs/${CONTRACT_NAME}-compiled.json > /app/logs/${CONTRACT_NAME}-compile.log 2>&1 || true
+
+                if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
+                    node /app/scripts/aggregate-all-logs.js "$CONTRACT_NAME" | tee -a "$LOG_FILE"
+                    log_with_timestamp "✅ Aggregated report generated: /app/logs/reports/${CONTRACT_NAME}-report.md"
+                    find "$CONTRACTS_DIR" -type f ! -name "${CONTRACT_NAME}-report.md" -delete
+                    find "$CONTRACTS_DIR" -type d -empty -delete
+                    find "/app/logs/reports" -type f -name "${CONTRACT_NAME}*" ! -name "${CONTRACT_NAME}-report.md" -delete
+                fi
+
+                end_time=$(date +%s)
+                log_with_timestamp "🏁 Completed processing $filename (processing time: \$((end_time-start_time))s)"
+                log_with_timestamp "=========================================="
+            } 2>&1
+        done
+        sleep 5
+    done
+fi   
