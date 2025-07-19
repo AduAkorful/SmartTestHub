@@ -32,6 +32,11 @@ log_with_timestamp() {
     esac
 }
 
+# Stub implementations for missing shell functions
+run_security_audit() { log_with_timestamp "Security audit not implemented."; }
+run_performance_analysis() { log_with_timestamp "Performance analysis not implemented."; }
+generate_comprehensive_report() { log_with_timestamp "Report generation not implemented."; }
+
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
 # --- Solana/Anchor/Project Setup ---
@@ -194,6 +199,8 @@ test-sbf = []
 overflow-checks = true
 lto = "fat"
 codegen-units = 1
+
+[workspace]
 EOF
 }
 
