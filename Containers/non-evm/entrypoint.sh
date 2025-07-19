@@ -115,12 +115,12 @@ EOF
 [dependencies]
 anchor-lang = "0.29.0"
 anchor-spl = "0.29.0"
-solana-program = "1.16.15"
-solana-sdk = "1.16.15"
+solana-program = "1.18.26"
+solana-sdk = "1.18.26"
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
 thiserror = "1.0"
-spl-token = { version = "3.5.0", features = ["no-entrypoint"] }
+spl-token = { version = "4.0.0", features = ["no-entrypoint"] }
 spl-associated-token-account = { version = "1.1.2", features = ["no-entrypoint"] }
 arrayref = "0.3.7"
 num-derive = "0.4"
@@ -141,7 +141,8 @@ EOF
             cat >> "$contracts_dir/Cargo.toml" <<EOF
 
 [dependencies]
-solana-program = "1.16.15"
+solana-program = "1.18.26"
+solana-sdk = "1.18.26"
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
 thiserror = "1.0"
@@ -164,7 +165,8 @@ EOF
             cat >> "$contracts_dir/Cargo.toml" <<EOF
 
 [dependencies]
-solana-program = "1.16.15"
+solana-program = "1.18.26"
+solana-sdk = "1.18.26"
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
 thiserror = "1.0"
@@ -185,8 +187,9 @@ EOF
     cat >> "$contracts_dir/Cargo.toml" <<EOF
 
 [dev-dependencies]
-solana-program-test = "1.16.15"
-solana-banks-client = "1.16.15"
+solana-program-test = "1.18.26"
+solana-banks-client = "1.18.26"
+solana-sdk = "1.18.26"
 tokio = { version = "1.0", features = ["full"] }
 assert_matches = "1.5"
 proptest = "1.0"
@@ -220,10 +223,10 @@ use ${contract_name}::*;
 
 #[tokio::test]
 async fn test_${contract_name}_initialization() {
-    let program_id = Pubkey::new_unique();
-    let mut program_test = ProgramTest::new(
+    let _program_id = Pubkey::new_unique();
+    let program_test = ProgramTest::new(
         "${contract_name}",
-        program_id,
+        _program_id,
         processor!(process_instruction),
     );
     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
@@ -241,15 +244,14 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::Transaction,
 };
-use std::str::FromStr;
 use ${contract_name}::*;
 
 #[tokio::test]
 async fn test_${contract_name}_basic() {
-    let program_id = Pubkey::new_unique();
-    let mut program_test = ProgramTest::new(
+    let _program_id = Pubkey::new_unique();
+    let program_test = ProgramTest::new(
         "${contract_name}",
-        program_id,
+        _program_id,
         processor!(process_instruction),
     );
     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
@@ -271,8 +273,6 @@ EOF
     esac
     log_with_timestamp "✅ Created test files"
 }
-
-# ... (other helper functions remain unchanged) ...
 
 if [ -f "/app/.env" ]; then
     export $(grep -v '^#' /app/.env | xargs)
