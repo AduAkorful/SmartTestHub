@@ -26,6 +26,19 @@ mkdir -p "$watch_dir" "$MARKER_DIR"
 log_with_timestamp "🚀 Starting Enhanced Algorand Container..."
 log_with_timestamp "📡 Watching for PyTeal smart contract files in $watch_dir..."
 
+# Helper: Generate the correct import line for the test file
+generate_import_line() {
+    local contracts_dir="$1"
+    if [ -f "$contracts_dir/src/contract.py" ]; then
+        echo "from contract import approval_program"
+    elif [ -f "$contracts_dir/contract.py" ]; then
+        echo "from contract import approval_program"
+    else
+        # fallback, may need manual fix
+        echo "# TODO: Fix import below\nfrom contract import approval_program"
+    fi
+}
+
 if ! inotifywait -m -e close_write,moved_to,create "$watch_dir" 2>/dev/null |
 while read -r directory events filename; do
     if [[ "$filename" == *.py ]]; then
@@ -49,9 +62,10 @@ while read -r directory events filename; do
 
             # Auto-generate a basic test if none exists
             if [ ! -f "$CONTRACTS_DIR/tests/test_${CONTRACT_NAME}.py" ]; then
+                import_line=$(generate_import_line "$CONTRACTS_DIR")
                 cat > "$CONTRACTS_DIR/tests/test_${CONTRACT_NAME}.py" <<EOF
 from pyteal import *
-from src.contract import approval_program
+$import_line
 
 def test_approval_program_approve():
     teal = compileTeal(approval_program(), mode=Mode.Application, version=6)
@@ -61,7 +75,7 @@ EOF
             fi
 
             log_with_timestamp "🧪 Running pytest for $CONTRACT_NAME..."
-            pytest --cov="$CONTRACTS_DIR/src" --cov-report=term --cov-report=xml:/app/logs/coverage/${CONTRACT_NAME}-coverage.xml --junitxml=/app/logs/reports/${CONTRACT_NAME}-junit.xml "$CONTRACTS_DIR/tests/" | tee /app/logs/test.log
+            pytest --cov="$CONTRACTS_DIR/src" --cov-report=term --cov-report=xml:/app/logs/coverage/${CONTRACT_NAME}-coverage.xml --junitxml=/app/logs/reports/${CONTRACT_NAME}-junit.xml "$CONTRACTS_DIR/tests" || true
 
             log_with_timestamp "🔎 Running flake8 linter..."
             flake8 "$CONTRACTS_DIR/src/contract.py" > /app/logs/security/${CONTRACT_NAME}-flake8.log 2>&1 || true
@@ -111,9 +125,10 @@ then
                 cp "$file" "$CONTRACTS_DIR/src/contract.py"
 
                 if [ ! -f "$CONTRACTS_DIR/tests/test_${CONTRACT_NAME}.py" ]; then
+                    import_line=$(generate_import_line "$CONTRACTS_DIR")
                     cat > "$CONTRACTS_DIR/tests/test_${CONTRACT_NAME}.py" <<EOF
 from pyteal import *
-from src.contract import approval_program
+$import_line
 
 def test_approval_program_approve():
     teal = compileTeal(approval_program(), mode=Mode.Application, version=6)
@@ -123,7 +138,7 @@ EOF
                 fi
 
                 log_with_timestamp "🧪 Running pytest for $CONTRACT_NAME..."
-                pytest --cov="$CONTRACTS_DIR/src" --cov-report=term --cov-report=xml:/app/logs/coverage/${CONTRACT_NAME}-coverage.xml --junitxml=/app/logs/reports/${CONTRACT_NAME}-junit.xml "$CONTRACTS_DIR/tests/" | tee /app/logs/test.log
+                pytest --cov="$CONTRACTS_DIR/src" --cov-report=term --cov-report=xml:/app/logs/coverage/${CONTRACT_NAME}-coverage.xml --junitxml=/app/logs/reports/${CONTRACT_NAME}-junit.xml "$CONTRACTS_DIR/tests" || true
 
                 log_with_timestamp "🔎 Running flake8 linter..."
                 flake8 "$CONTRACTS_DIR/src/contract.py" > /app/logs/security/${CONTRACT_NAME}-flake8.log 2>&1 || true
