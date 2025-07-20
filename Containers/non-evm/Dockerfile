@@ -44,9 +44,13 @@ RUN npm cache clean --force
 RUN npm install axios dotenv xml2js
 WORKDIR /app
 
+# Install Rust AST cleaner dependencies and build the cleaner binary
+RUN cargo install prettyplease syn --locked
+COPY scripts/clean_rust.rs /app/scripts/
+RUN rustc /app/scripts/clean_rust.rs -o /usr/local/bin/clean_rust
+
 # Copy only the Cargo.toml for dependency layer caching
 COPY Cargo.toml ./
-# If Cargo.lock exists, use it; else, generate it on the fly
 RUN mkdir -p src && echo "pub fn dummy() {}" > src/lib.rs && \
     test -f Cargo.lock || cargo generate-lockfile && \
     cargo fetch && \
