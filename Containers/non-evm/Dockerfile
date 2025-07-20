@@ -49,7 +49,7 @@ WORKDIR /app/scripts
 COPY scripts/clean_rust.rs /app/scripts/
 RUN mkdir -p cleaner/src && \
     mv clean_rust.rs cleaner/src/main.rs && \
-    echo "[package]\nname = \"cleaner\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nsyn = { version = \"2\", features = [\"visit-mut\"] }\nprettyplease = \"0.2\"\nproc_macro2 = \"1\"\n" > cleaner/Cargo.toml && \
+    echo "[package]\nname = \"cleaner\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nsyn = { version = \"2\", features = [\"visit-mut\"] }\nprettyplease = \"0.2\"\nproc-macro2 = \"1\"\n" > cleaner/Cargo.toml && \
     cd cleaner && cargo build --release && \
     cp target/release/cleaner /usr/local/bin/clean_rust
 
