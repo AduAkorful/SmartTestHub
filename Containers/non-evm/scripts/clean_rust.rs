@@ -1,6 +1,7 @@
 use std::env;
 use std::fs;
 use syn::{visit_mut::VisitMut, File, Item, ItemFn, FnArg, Pat};
+use quote::ToTokens;
 
 struct Cleaner;
 
