@@ -44,10 +44,17 @@ RUN npm cache clean --force
 RUN npm install axios dotenv xml2js
 WORKDIR /app
 
-# Install Rust AST cleaner dependencies and build the cleaner binary
-RUN cargo install prettyplease syn --locked
+# Prepare and build the Rust AST cleaner binary
+# Create a minimal Cargo project for the cleaner
+WORKDIR /app/scripts
 COPY scripts/clean_rust.rs /app/scripts/
-RUN rustc /app/scripts/clean_rust.rs -o /usr/local/bin/clean_rust
+RUN mkdir -p cleaner/src && \
+    mv clean_rust.rs cleaner/src/main.rs && \
+    echo "[package]\nname = \"cleaner\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nsyn = \"2\"\nprettyplease = \"0.2\"\n" > cleaner/Cargo.toml && \
+    cd cleaner && cargo build --release && \
+    cp target/release/cleaner /usr/local/bin/clean_rust
+
+WORKDIR /app
 
 # Copy only the Cargo.toml for dependency layer caching
 COPY Cargo.toml ./
