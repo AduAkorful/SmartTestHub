@@ -69,9 +69,11 @@ fix_rust_warnings_ast() {
 generate_test_file_ast() {
     local contract_name="$1"
     local contracts_dir="$2"
+    mkdir -p "$contracts_dir/tests"
     cat > "$contracts_dir/tests/test_${contract_name}.rs" <<EOF
 use solana_program_test::*;
 use solana_sdk::signature::{Keypair, Signer};
+use solana_sdk::pubkey::Pubkey;
 
 #[tokio::test]
 async fn test_${contract_name}_basic() {
@@ -89,6 +91,7 @@ EOF
 
 create_dynamic_cargo_toml() {
     local contract_name="$1"
+    local contracts_dir="$2"
     log_with_timestamp "📝 Creating dynamic Cargo.toml for $contract_name..."
     cat > "$contracts_dir/Cargo.toml" <<EOF
 [package]
@@ -166,7 +169,7 @@ while read -r directory events filename; do
             cp "$FILE_PATH" "$contracts_dir/src/lib.rs"
             log_with_timestamp "📁 Contract copied to $contracts_dir/src/lib.rs"
             fix_rust_warnings_ast "$contracts_dir/src/lib.rs"
-            create_dynamic_cargo_toml "$contract_name"
+            create_dynamic_cargo_toml "$contract_name" "$contracts_dir"
             generate_test_file_ast "$contract_name" "$contracts_dir"
 
             cargo fetch
@@ -218,7 +221,7 @@ then
                 cp "$file" "$contracts_dir/src/lib.rs"
                 log_with_timestamp "📁 Contract copied to $contracts_dir/src/lib.rs"
                 fix_rust_warnings_ast "$contracts_dir/src/lib.rs"
-                create_dynamic_cargo_toml "$contract_name"
+                create_dynamic_cargo_toml "$contract_name" "$contracts_dir"
                 generate_test_file_ast "$contract_name" "$contracts_dir"
 
                 cargo fetch
