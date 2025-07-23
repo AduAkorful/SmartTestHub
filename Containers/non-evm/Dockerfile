@@ -18,12 +18,12 @@ RUN cargo install sccache --locked
 
 WORKDIR /root
 
-# Install Agave using the official installer with a specific version
+# Install Solana using the Agave installer with a specific version
 RUN curl -sSf https://release.anza.xyz/v2.2.14/install | sh && \
-    export PATH="/root/.local/share/agave/install/active_release/bin:$PATH" && \
-    agave-install init
+    . /root/.profile && \
+    solana-install init
 
-ENV PATH="/root/.local/share/agave/install/active_release/bin:${PATH}"
+ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
 
 # Generate keypair
 RUN mkdir -p /root/.config/solana && \
