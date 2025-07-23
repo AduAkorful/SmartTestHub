@@ -23,7 +23,7 @@ services:
       - smarthub-network
 
   solana-validator:
-    image: solanalabs/solana:v1.16.15
+    image: solanalabs/solana:v1.17.0
     container_name: solana-validator
     command: >
       solana-test-validator --reset --no-bpf-jit --no-poh-speed-test --quiet
@@ -52,12 +52,14 @@ services:
     restart: unless-stopped
     environment:
       - RUST_LOG=debug
+      - RUST_BACKTRACE=1
       - SOLANA_URL=http://solana-validator:8899
       - AWS_XRAY_SDK_ENABLED=false
       - CARGO_BUILD_JOBS=4
       - RUSTFLAGS=-C target-cpu=native
       - RUSTC_WRAPPER=sccache
       - CARGO_TARGET_DIR=/app/target
+      - ANCHOR_WALLET=/root/.config/solana/id.json
     env_file:
       - .env
     depends_on:
