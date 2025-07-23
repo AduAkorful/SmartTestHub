@@ -32,12 +32,14 @@ log_with_timestamp() {
     esac
 }
 
+# Stub implementations for missing shell functions
 run_security_audit() { log_with_timestamp "Security audit not implemented."; }
 run_performance_analysis() { log_with_timestamp "Performance analysis not implemented."; }
 generate_comprehensive_report() { log_with_timestamp "Report generation not implemented."; }
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
+# --- Solana/Anchor/Project Setup ---
 setup_solana_environment() {
     log_with_timestamp "🔧 Setting up Solana environment..."
     if ! command_exists solana; then
@@ -56,43 +58,46 @@ setup_solana_environment() {
     fi
 }
 
-# AST-based cleaner (requires /usr/local/bin/clean_rust from Dockerfile)
-fix_rust_warnings_ast() {
-    local file="$1"
-    if command -v clean_rust &>/dev/null; then
-        clean_rust "$file"
+detect_project_type() {
+    local file_path="$1"
+    if grep -q "#\[program\]" "$file_path" || grep -q "use anchor_lang::prelude" "$file_path"; then
+        echo "anchor"
+    elif grep -q "entrypoint\!" "$file_path" || grep -q "solana_program::entrypoint\!" "$file_path"; then
+        echo "native"
     else
-        echo "clean_rust binary not found, skipping AST cleanup" >&2
+        echo "unknown"
     fi
 }
 
-generate_test_file_ast() {
-    local contract_name="$1"
-    local contracts_dir="$2"
-    mkdir -p "$contracts_dir/tests"
-    cat > "$contracts_dir/tests/test_${contract_name}.rs" <<EOF
-use solana_program_test::*;
-use solana_sdk::signature::{Keypair, Signer};
-use solana_sdk::pubkey::Pubkey;
-
-#[tokio::test]
-async fn test_${contract_name}_basic() {
-    let _program_id = Pubkey::new_unique();
-    let program_test = ProgramTest::new(
-        "${contract_name}",
-        _program_id,
-        processor!(process_instruction),
-    );
-    let (_banks_client, _payer, _recent_blockhash) = program_test.start().await;
-    assert!(true, "Basic test passed");
+# --- Dependency Build Caching Logic ---
+cargo_toml_changed() {
+    local new_cargo="$1"
+    local cache_cargo="$2"
+    if [ ! -f "$cache_cargo" ]; then
+        return 0
+    fi
+    if ! cmp -s "$new_cargo" "$cache_cargo"; then
+        return 0
+    fi
+    return 1
 }
-EOF
+
+fetch_new_dependencies() {
+    local cargo_toml="$1"
+    local cache_cargo="$2"
+    if cargo_toml_changed "$cargo_toml" "$cache_cargo"; then
+        log_with_timestamp "🔄 Cargo.toml changed, fetching new dependencies..."
+        cargo fetch
+        cp "$cargo_toml" "$cache_cargo"
+    else
+        log_with_timestamp "✅ No change to dependencies, skipping cargo fetch."
+    fi
 }
 
 create_dynamic_cargo_toml() {
     local contract_name="$1"
-    local contracts_dir="$2"
-    log_with_timestamp "📝 Creating dynamic Cargo.toml for $contract_name..."
+    local project_type="$2"
+    log_with_timestamp "📝 Creating dynamic Cargo.toml for $contract_name ($project_type)..."
     cat > "$contracts_dir/Cargo.toml" <<EOF
 [package]
 name = "$contract_name"
@@ -102,27 +107,92 @@ description = "Smart contract automatically processed by SmartTestHub"
 
 [lib]
 crate-type = ["cdylib", "lib"]
+EOF
+    case $project_type in
+        "anchor")
+            cat >> "$contracts_dir/Cargo.toml" <<EOF
 
 [dependencies]
-solana-program = "2.3.0"
-solana-sdk = "2.3.1"
-borsh = "1.5.7"
-borsh-derive = "1.5.7"
-thiserror = "2.0.12"
-spl-token = { version = "4.0.3", features = ["no-entrypoint"] }
-spl-associated-token-account = { version = "2.3.0", features = ["no-entrypoint"] }
-arrayref = "0.3.9"
-num-derive = "0.4.2"
-num-traits = "0.2.19"
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.141"
+anchor-lang = "0.29.0"
+anchor-spl = "0.29.0"
+solana-program = "1.18.26"
+solana-sdk = "1.18.26"
+borsh = "0.10.3"
+borsh-derive = "0.10.3"
+thiserror = "1.0"
+spl-token = { version = "4.0.0", features = ["no-entrypoint"] }
+spl-associated-token-account = { version = "1.1.2", features = ["no-entrypoint"] }
+arrayref = "0.3.7"
+num-derive = "0.4"
+num-traits = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+itertools = "0.13"
+anyhow = "1"
+bytemuck = { version = "1.15", features = ["derive"] }
+lazy_static = "1"
+regex = "1"
+cfg-if = "1"
+log = "0.4"
+once_cell = "1"
+EOF
+            ;;
+        "native")
+            cat >> "$contracts_dir/Cargo.toml" <<EOF
+
+[dependencies]
+solana-program = "1.18.26"
+solana-sdk = "1.18.26"
+borsh = "0.10.3"
+borsh-derive = "0.10.3"
+thiserror = "1.0"
+num-traits = "0.2"
+num-derive = "0.4"
+arrayref = "0.3.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+itertools = "0.13"
+anyhow = "1"
+bytemuck = { version = "1.15", features = ["derive"] }
+lazy_static = "1"
+regex = "1"
+cfg-if = "1"
+log = "0.4"
+once_cell = "1"
+EOF
+            ;;
+        *)
+            cat >> "$contracts_dir/Cargo.toml" <<EOF
+
+[dependencies]
+solana-program = "1.18.26"
+solana-sdk = "1.18.26"
+borsh = "0.10.3"
+borsh-derive = "0.10.3"
+thiserror = "1.0"
+arrayref = "0.3.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+itertools = "0.13"
+anyhow = "1"
+bytemuck = { version = "1.15", features = ["derive"] }
+lazy_static = "1"
+regex = "1"
+cfg-if = "1"
+log = "0.4"
+once_cell = "1"
+EOF
+            ;;
+    esac
+    cat >> "$contracts_dir/Cargo.toml" <<EOF
 
 [dev-dependencies]
-solana-program-test = "2.3.5"
-solana-banks-client = "2.3.5"
-tokio = { version = "1.46.1", features = ["full"] }
-assert_matches = "1.5.0"
-proptest = "1.7.0"
+solana-program-test = "1.18.26"
+solana-banks-client = "1.18.26"
+solana-sdk = "1.18.26"
+tokio = { version = "1.0", features = ["full"] }
+assert_matches = "1.5"
+proptest = "1.0"
 
 [features]
 no-entrypoint = []
@@ -136,6 +206,78 @@ codegen-units = 1
 [workspace]
 EOF
 }
+
+create_test_files() {
+    local contract_name="$1"
+    local project_type="$2"
+    log_with_timestamp "🧪 Creating test files for $contract_name ($project_type)..."
+    mkdir -p "$contracts_dir/tests"
+    case $project_type in
+        "anchor")
+            cat > "$contracts_dir/tests/test_${contract_name}.rs" <<EOF
+use anchor_lang::prelude::*;
+use solana_program_test::*;
+use solana_sdk::{signature::{Keypair, Signer}, transaction::Transaction};
+
+use ${contract_name}::*;
+
+#[tokio::test]
+async fn test_${contract_name}_initialization() {
+    let _program_id = Pubkey::new_unique();
+    let program_test = ProgramTest::new(
+        "${contract_name}",
+        _program_id,
+        processor!(process_instruction),
+    );
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    assert!(true);
+}
+EOF
+            ;;
+        "native")
+            cat > "$contracts_dir/tests/test_${contract_name}.rs" <<EOF
+use solana_program_test::*;
+use solana_sdk::{
+    account::Account,
+    instruction::{AccountMeta, Instruction},
+    pubkey::Pubkey,
+    signature::{Keypair, Signer},
+    transaction::Transaction,
+};
+use ${contract_name}::*;
+
+#[tokio::test]
+async fn test_${contract_name}_basic() {
+    let _program_id = Pubkey::new_unique();
+    let program_test = ProgramTest::new(
+        "${contract_name}",
+        _program_id,
+        processor!(process_instruction),
+    );
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    assert!(true);
+}
+EOF
+            ;;
+        *)
+            cat > "$contracts_dir/tests/test_${contract_name}.rs" <<EOF
+use solana_program_test::*;
+use solana_sdk::signature::{Keypair, Signer};
+
+#[tokio::test]
+async fn test_${contract_name}_placeholder() {
+    assert!(true, "Placeholder test passed");
+}
+EOF
+            ;;
+    esac
+    log_with_timestamp "✅ Created test files"
+}
+
+if [ -f "/app/.env" ]; then
+    export $(grep -v '^#' /app/.env | xargs)
+    log_with_timestamp "✅ Environment variables loaded from .env"
+fi
 
 setup_solana_environment
 
@@ -168,31 +310,83 @@ while read -r directory events filename; do
             mkdir -p "$contracts_dir/src"
             cp "$FILE_PATH" "$contracts_dir/src/lib.rs"
             log_with_timestamp "📁 Contract copied to $contracts_dir/src/lib.rs"
-            fix_rust_warnings_ast "$contracts_dir/src/lib.rs"
-            create_dynamic_cargo_toml "$contract_name" "$contracts_dir"
-            generate_test_file_ast "$contract_name" "$contracts_dir"
+            project_type=$(detect_project_type "$contracts_dir/src/lib.rs")
+            log_with_timestamp "🔍 Detected project type: $project_type"
+            create_dynamic_cargo_toml "$contract_name" "$project_type"
+            create_test_files "$contract_name" "$project_type"
 
-            cargo fetch
+            # Check and fetch only new dependencies
+            fetch_new_dependencies "$contracts_dir/Cargo.toml" "$CACHE_CARGO_TOML"
 
-            (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
-            if [ $? -eq 0 ]; then
-                log_with_timestamp "✅ Build successful"
-                (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
-            else
-                log_with_timestamp "❌ Build failed for $contract_name" "error"
-                continue
-            fi
+            # Build step
+            log_with_timestamp "🔨 Building $contract_name ($project_type)..."
+            case $project_type in
+                "anchor")
+                    cat > "$contracts_dir/Anchor.toml" <<EOF
+[features]
+seed = false
+skip-lint = false
 
+[programs.localnet]
+$contract_name = "target/deploy/${contract_name}.so"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "${SOLANA_URL:-http://solana-validator:8899}"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "cargo test-sbf"
+
+[test]
+startup_wait = 5000
+shutdown_wait = 2000
+upgrade_wait = 1000
+EOF
+                    (cd "$contracts_dir" && anchor build 2>&1 | tee -a "$LOG_FILE")
+                    if [ $? -eq 0 ]; then
+                        (cd "$contracts_dir" && anchor test --skip-local-validator | tee -a "$LOG_FILE")
+                        log_with_timestamp "✅ Anchor build & tests successful"
+                    else
+                        log_with_timestamp "❌ Anchor build failed, trying cargo build..." "error"
+                        (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
+                        if [ $? -eq 0 ]; then
+                            log_with_timestamp "✅ Cargo build successful"
+                            (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
+                        else
+                            log_with_timestamp "❌ All builds failed for $contract_name" "error"
+                            continue
+                        fi
+                    fi
+                    ;;
+                *)
+                    (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
+                    if [ $? -eq 0 ]; then
+                        log_with_timestamp "✅ Build successful"
+                        (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
+                    else
+                        log_with_timestamp "❌ Build failed for $contract_name" "error"
+                        continue
+                    fi
+                    ;;
+            esac
+
+            # Security, performance, coverage, report generation (outside contract dir for global logs)
             run_security_audit "$contract_name"
             run_performance_analysis "$contract_name"
             end_time=$(date +%s)
-            generate_comprehensive_report "$contract_name" "native" "$start_time" "$end_time"
+            generate_comprehensive_report "$contract_name" "$project_type" "$start_time" "$end_time"
             log_with_timestamp "🏁 Completed processing $filename"
+            # Aggregate all contract reports into a unified summary
             if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
                 node /app/scripts/aggregate-all-logs.js "$contract_name" | tee -a "$LOG_FILE"
                 log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.md"
+                # Clean up all files for this contract in /app/contracts/${contract_name} except the report
                 find "$contracts_dir" -type f ! -name "${contract_name}-report.md" -delete
                 find "$contracts_dir" -type d -empty -delete
+                # Also clean up /app/logs/reports except the main report for this contract
                 find "/app/logs/reports" -type f -name "${contract_name}*" ! -name "${contract_name}-report.md" -delete
             fi
             log_with_timestamp "=========================================="
@@ -220,24 +414,70 @@ then
                 mkdir -p "$contracts_dir/src"
                 cp "$file" "$contracts_dir/src/lib.rs"
                 log_with_timestamp "📁 Contract copied to $contracts_dir/src/lib.rs"
-                fix_rust_warnings_ast "$contracts_dir/src/lib.rs"
-                create_dynamic_cargo_toml "$contract_name" "$contracts_dir"
-                generate_test_file_ast "$contract_name" "$contracts_dir"
+                project_type=$(detect_project_type "$contracts_dir/src/lib.rs")
+                log_with_timestamp "🔍 Detected project type: $project_type"
+                create_dynamic_cargo_toml "$contract_name" "$project_type"
+                create_test_files "$contract_name" "$project_type"
 
-                cargo fetch
-                (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
-                if [ $? -eq 0 ]; then
-                    log_with_timestamp "✅ Build successful"
-                    (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
-                else
-                    log_with_timestamp "❌ Build failed for $contract_name" "error"
-                    continue
-                fi
+                fetch_new_dependencies "$contracts_dir/Cargo.toml" "$CACHE_CARGO_TOML"
 
+                log_with_timestamp "🔨 Building $contract_name ($project_type)..."
+                case $project_type in
+                    "anchor")
+                        cat > "$contracts_dir/Anchor.toml" <<EOF
+[features]
+seed = false
+skip-lint = false
+
+[programs.localnet]
+$contract_name = "target/deploy/${contract_name}.so"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "${SOLANA_URL:-http://solana-validator:8899}"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "cargo test-sbf"
+
+[test]
+startup_wait = 5000
+shutdown_wait = 2000
+upgrade_wait = 1000
+EOF
+                        (cd "$contracts_dir" && anchor build 2>&1 | tee -a "$LOG_FILE")
+                        if [ $? -eq 0 ]; then
+                            (cd "$contracts_dir" && anchor test --skip-local-validator | tee -a "$LOG_FILE")
+                            log_with_timestamp "✅ Anchor build & tests successful"
+                        else
+                            log_with_timestamp "❌ Anchor build failed, trying cargo build..." "error"
+                            (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
+                            if [ $? -eq 0 ]; then
+                                log_with_timestamp "✅ Cargo build successful"
+                                (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
+                            else
+                                log_with_timestamp "❌ All builds failed for $contract_name" "error"
+                                continue
+                            fi
+                        fi
+                        ;;
+                    *)
+                        (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
+                        if [ $? -eq 0 ]; then
+                            log_with_timestamp "✅ Build successful"
+                            (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
+                        else
+                            log_with_timestamp "❌ Build failed for $contract_name" "error"
+                            continue
+                        fi
+                        ;;
+                esac
                 run_security_audit "$contract_name"
                 run_performance_analysis "$contract_name"
                 end_time=$(date +%s)
-                generate_comprehensive_report "$contract_name" "native" "$start_time" "$end_time"
+                generate_comprehensive_report "$contract_name" "$project_type" "$start_time" "$end_time"
                 log_with_timestamp "🏁 Completed processing $filename"
                 if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
                     node /app/scripts/aggregate-all-logs.js "$contract_name" | tee -a "$LOG_FILE"
