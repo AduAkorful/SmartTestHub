@@ -15,34 +15,44 @@ RUN apt-get update && \
       tzdata \
       inotify-tools \
       nodejs \
-      npm && \
+      npm \
+      jq \
+      unzip && \
     rm -rf /var/lib/apt/lists/*
 
 # Install sccache for Rust build caching
-RUN cargo install sccache
+RUN cargo install sccache --locked
 
 # Copy and extract Solana CLI (offline install)
 COPY solana-release-x86_64-unknown-linux-gnu.tar.bz2 /tmp/
 RUN mkdir -p /root/.local/share/solana/install && \
     tar -xjf /tmp/solana-release-x86_64-unknown-linux-gnu.tar.bz2 -C /root/.local/share/solana/install && \
-    mv /root/.local/share/solana/install/solana-release* /root/.local/share/solana/install/active_release
+    mv /root/.local/share/solana/install/solana-release* /root/.local/share/solana/install/active_release && \
+    rm -f /tmp/solana-release-x86_64-unknown-linux-gnu.tar.bz2
 
 ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
 
 RUN solana --version
 
-# Install anchor, tarpaulin, audit, and clippy (as rustup component) in one layer for cache
-RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked && \
-    cargo install cargo-tarpaulin --locked && \
-    cargo install cargo-audit --locked && \
-    rustup component add clippy
+# Install enhanced toolchain with proper versions and security tools
+RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --tag v0.30.1 --locked && \
+    cargo install cargo-tarpaulin --version 0.31.2 --locked && \
+    cargo install cargo-audit --version 0.21.0 --locked && \
+    cargo install cargo-benchcmp --locked && \
+    cargo install cargo-nextest --locked && \
+    rustup component add clippy rustfmt && \
+    rustup target add bpf-unknown-unknown
 
-# Install node dependencies for log aggregation (no package.json required)
+# Install node dependencies for enhanced reporting
 WORKDIR /app/scripts
 RUN rm -rf node_modules package-lock.json
 RUN npm cache clean --force
-RUN npm install axios dotenv xml2js
+RUN npm install axios@1.7.7 dotenv@16.4.5 xml2js@0.6.2 markdown-table@3.0.3 chalk@5.3.0
 WORKDIR /app
+
+# Copy configuration files first for better caching
+COPY config ./config
+COPY scripts ./scripts
 
 # Copy only the Cargo.toml for dependency layer caching
 COPY Cargo.toml ./
@@ -50,24 +60,41 @@ COPY Cargo.toml ./
 RUN mkdir -p src && echo "pub fn dummy() {}" > src/lib.rs && \
     test -f Cargo.lock || cargo generate-lockfile && \
     cargo fetch && \
-    SCCACHE_CACHE_SIZE=2G SCCACHE_DIR=/app/.cache/sccache RUSTC_WRAPPER=sccache cargo build --release || true
+    SCCACHE_CACHE_SIZE=4G SCCACHE_DIR=/app/.cache/sccache RUSTC_WRAPPER=sccache cargo build --release || true
 
-# Copy the rest of the source and scripts
+# Copy the rest of the source
 COPY src ./src
 COPY entrypoint.sh ./
-COPY config ./config
 COPY tests ./tests
-COPY scripts ./scripts
 
-RUN chmod +x /app/entrypoint.sh || true
+RUN chmod +x /app/entrypoint.sh
 
-RUN mkdir -p /app/logs/coverage /app/logs/reports /app/logs/benchmarks /app/logs/security /app/logs/xray
+# Create comprehensive directory structure
+RUN mkdir -p \
+    /app/logs/coverage \
+    /app/logs/reports \
+    /app/logs/benchmarks \
+    /app/logs/security \
+    /app/logs/performance \
+    /app/logs/xray \
+    /app/contracts \
+    /app/input \
+    /app/.processed \
+    /app/.cache/sccache
 
+# Enhanced environment variables
 ENV CARGO_TARGET_DIR=/app/target
 ENV RUSTC_WRAPPER=sccache
-ENV SCCACHE_CACHE_SIZE=2G
+ENV SCCACHE_CACHE_SIZE=4G
 ENV SCCACHE_DIR=/app/.cache/sccache
 ENV CARGO_BUILD_JOBS=4
-ENV RUSTFLAGS="-C target-cpu=native"
+ENV RUSTFLAGS="-C target-cpu=native -C link-arg=-z -C link-arg=noexecstack"
+ENV RUST_LOG=info
+ENV CARGO_TERM_COLOR=always
+
+# Security and performance optimizations
+ENV CARGO_NET_RETRY=10
+ENV CARGO_HTTP_TIMEOUT=30
+ENV CARGO_HTTP_LOW_SPEED_LIMIT=10
 
 ENTRYPOINT ["/app/entrypoint.sh"]
