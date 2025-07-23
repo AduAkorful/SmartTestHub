@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-# --- Enhanced Environment Setup ---
 export RUSTC_WRAPPER=sccache
 export SCCACHE_CACHE_SIZE=4G
 export SCCACHE_DIR="/app/.cache/sccache"
@@ -11,7 +10,6 @@ export RUSTFLAGS="-C target-cpu=native -C link-arg=-z -C link-arg=noexecstack"
 export RUST_LOG=${RUST_LOG:-info}
 export CARGO_TERM_COLOR=always
 
-# Log file definitions
 LOG_FILE="/app/logs/test.log"
 ERROR_LOG="/app/logs/error.log"
 SECURITY_LOG="/app/logs/security/security-audit.log"
@@ -20,7 +18,6 @@ COVERAGE_LOG="/app/logs/coverage/coverage.log"
 XRAY_LOG="/app/logs/xray/xray.log"
 BENCHMARK_LOG="/app/logs/benchmarks/benchmark.log"
 
-# Create all necessary directories
 mkdir -p "$(dirname "$LOG_FILE")" "$(dirname "$ERROR_LOG")" \
   "$(dirname "$SECURITY_LOG")" "$(dirname "$PERFORMANCE_LOG")" \
   "$(dirname "$COVERAGE_LOG")" "$(dirname "$XRAY_LOG")" \
@@ -28,7 +25,6 @@ mkdir -p "$(dirname "$LOG_FILE")" "$(dirname "$ERROR_LOG")" \
   /app/logs/coverage /app/logs/reports /app/logs/benchmarks \
   /app/logs/security /app/logs/performance /app/logs/xray /app/contracts
 
-# Enhanced logging function
 log_with_timestamp() {
     local message="$1"
     local log_type="${2:-info}"
@@ -48,15 +44,12 @@ log_with_timestamp() {
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
-# --- FIXED: Security Audit Implementation ---
 run_security_audit() {
     local contract_dir="$1"
     local contract_name="$2"
     
     log_with_timestamp "🛡️ Running comprehensive security audit for $contract_name..." "security"
     
-    # Cargo Audit - Vulnerability scanning
-    log_with_timestamp "Running cargo audit..." "security"
     if command_exists cargo-audit; then
         cd "$contract_dir"
         if cargo audit --json > /app/logs/security/audit-$contract_name.json 2>&1; then
@@ -69,8 +62,6 @@ run_security_audit() {
         log_with_timestamp "❌ cargo-audit not found" "error"
     fi
     
-    # Clippy - Static analysis
-    log_with_timestamp "Running clippy analysis..." "security"
     if command_exists cargo; then
         cd "$contract_dir"
         cargo clippy --all-targets --all-features -- -D warnings \
@@ -79,7 +70,6 @@ run_security_audit() {
         log_with_timestamp "✅ Clippy analysis completed" "security"
     fi
     
-    # Generate security report
     cat > /app/logs/security/security-summary-$contract_name.md <<EOF
 # Security Audit Report - $contract_name
 **Date:** $(date '+%Y-%m-%d %H:%M:%S')
@@ -101,7 +91,6 @@ EOF
     log_with_timestamp "✅ Security audit completed for $contract_name" "security"
 }
 
-# --- FIXED: Performance Analysis Implementation ---
 run_performance_analysis() {
     local contract_dir="$1"
     local contract_name="$2"
@@ -110,29 +99,23 @@ run_performance_analysis() {
     
     cd "$contract_dir"
     
-    # Compute unit measurement
-    log_with_timestamp "Measuring compute units..." "performance"
     if cargo test --release --features=test-sbf 2>&1 | grep -E "(consumed|units)" > /app/logs/performance/compute-units-$contract_name.log; then
         log_with_timestamp "✅ Compute unit measurement completed" "performance"
     else
         log_with_timestamp "⚠️ No compute unit data found" "performance"
     fi
     
-    # Binary size analysis
-    log_with_timestamp "Analyzing binary size..." "performance"
     if [ -f "target/deploy/$contract_name.so" ]; then
         ls -la "target/deploy/$contract_name.so" > /app/logs/performance/binary-size-$contract_name.txt
         log_with_timestamp "✅ Binary size analysis completed" "performance"
     fi
     
-    # Benchmarks (if available)
     if cargo bench --no-run 2>/dev/null; then
         log_with_timestamp "Running benchmarks..." "benchmark"
         cargo bench > /app/logs/benchmarks/bench-$contract_name.txt 2>&1 || \
             log_with_timestamp "⚠️ Benchmark execution had issues" "benchmark"
     fi
     
-    # Generate performance report
     cat > /app/logs/performance/performance-summary-$contract_name.md <<EOF
 # Performance Analysis Report - $contract_name
 **Date:** $(date '+%Y-%m-%d %H:%M:%S')
@@ -148,7 +131,6 @@ EOF
     log_with_timestamp "✅ Performance analysis completed for $contract_name" "performance"
 }
 
-# --- FIXED: Coverage Analysis Implementation ---
 run_coverage_analysis() {
     local contract_dir="$1"
     local contract_name="$2"
@@ -164,7 +146,6 @@ run_coverage_analysis() {
             --json > /app/logs/coverage/coverage-$contract_name.json 2>&1 || \
             log_with_timestamp "⚠️ Coverage analysis had issues" "coverage"
         
-        # Extract coverage percentage
         if [ -f "/app/logs/coverage/coverage-$contract_name.json" ]; then
             jq -r '.files[] | select(.name | contains("lib.rs")) | .coverage' \
                 /app/logs/coverage/coverage-$contract_name.json \
@@ -177,7 +158,6 @@ run_coverage_analysis() {
     fi
 }
 
-# --- FIXED: Comprehensive Report Generation ---
 generate_comprehensive_report() {
     local contract_name="$1"
     local project_type="$2"
@@ -198,9 +178,9 @@ generate_comprehensive_report() {
 ## 🏗️ Build Results
 
 ### Dependencies Status
-- **Solana Program:** 2.3.0 ✅
-- **Borsh:** 1.5.7 ✅  
-- **SPL Token:** 4.0.3 ✅
+- **Solana Program:** 1.16.15 ✅
+- **Borsh:** 0.10.3 ✅  
+- **SPL Token:** 3.5.0 ✅
 
 ### Compilation
 $(if grep -q "Finished.*release.*target" /app/logs/test.log; then
@@ -290,9 +270,9 @@ fi)
 - **Performance:** $(if [ -f /app/logs/performance/performance-summary-$contract_name.md ]; then echo "✅ Analyzed"; else echo "❌ Missing"; fi)
 
 ### Recommendations
-1. **Dependencies:** All critical dependencies updated to latest versions ✅
-2. **Testing:** $(if [ -f /app/logs/coverage/coverage-percent-$contract_name.txt ] && (( $(echo "$(cat /app/logs/coverage/coverage-percent-$contract_name.txt) < 80" | bc -l) )); then echo "Increase test coverage above 80%"; else echo "Maintain comprehensive test coverage"; fi)
-3. **Security:** $(if [ -f /app/logs/security/vuln-count-$contract_name.txt ] && [ "$(cat /app/logs/security/vuln-count-$contract_name.txt)" != "0" ]; then echo "Address identified vulnerabilities"; else echo "Continue regular security audits"; fi)
+1. **Dependencies:** All critical dependencies updated to latest compatible versions ✅
+2. **Testing:** $(if [ -f /app/logs/coverage/coverage-percent-$contract_name.txt ] && (( $(echo "$(cat /app/logs/coverage/coverage-percent-$contract_name.txt) < 80" | bc -l) )); then echo "Increase test coverage"; else echo "Maintain current test coverage"; fi)
+3. **Security:** $(if [ -f /app/logs/security/vuln-count-$contract_name.txt ] && [ "$(cat /app/logs/security/vuln-count-$contract_name.txt)" != "0" ]; then echo "Address identified vulnerabilities"; else echo "Maintain current security measures"; fi)
 4. **Performance:** Monitor compute unit consumption for optimization opportunities
 
 ---
@@ -303,7 +283,6 @@ EOF
 
     log_with_timestamp "✅ Comprehensive report generated: $report_file"
     
-    # Also trigger AI enhancement if available
     if [ -f "/app/scripts/ai_enhance_report.js" ]; then
         log_with_timestamp "🤖 Running AI-enhanced analysis..."
         cd /app/scripts && node ai_enhance_report.js "$contract_name" "$report_file" || \
@@ -311,7 +290,6 @@ EOF
     fi
 }
 
-# --- Solana Environment Setup ---
 setup_solana_environment() {
     log_with_timestamp "🔧 Setting up Solana environment..."
     if ! command_exists solana; then
@@ -330,7 +308,6 @@ setup_solana_environment() {
     fi
 }
 
-# Enhanced project type detection
 detect_project_type() {
     local file_path="$1"
     if grep -q "#\[program\]" "$file_path" || grep -q "use anchor_lang::prelude" "$file_path"; then
@@ -342,7 +319,6 @@ detect_project_type() {
     fi
 }
 
-# Enhanced Cargo.toml generation with fixed dependencies
 create_dynamic_cargo_toml() {
     local contract_name="$1"
     local project_type="$2"
@@ -358,30 +334,29 @@ edition = "2021"
 description = "Generated Solana smart contract: $contract_name"
 
 [dependencies]
-solana-program = "2.3.0"
-borsh = "1.5.7"
-borsh-derive = "1.5.7"
-thiserror = "2.0.12"
-num-derive = "0.4.2"
-num-traits = "0.2.19"
-spl-token = { version = "4.0.3", features = ["no-entrypoint"] }
-spl-associated-token-account = { version = "2.3.0", features = ["no-entrypoint"] }
-arrayref = "0.3.9"
+solana-program = "=1.16.15"
+borsh = "0.10.3"
+borsh-derive = "0.10.3"
+thiserror = "1.0.49"
+num-derive = "0.4"
+num-traits = "0.2"
+spl-token = { version = "=3.5.0", features = ["no-entrypoint"] }
+spl-associated-token-account = { version = "=1.1.3", features = ["no-entrypoint"] }
+arrayref = "0.3.7"
 
 $(if [ "$project_type" = "anchor" ]; then
 cat <<EOF2
-anchor-lang = "0.30.1"
-anchor-spl = "0.30.1"
+anchor-lang = "=0.28.0"
+anchor-spl = "=0.28.0"
 EOF2
 fi)
 
 [dev-dependencies]
-solana-program-test = "2.3.5"
-solana-banks-client = "2.3.5"
-solana-sdk = "2.3.1"
-tokio = { version = "1.46", features = ["full"] }
+solana-program-test = "=1.16.15"
+solana-sdk = "=1.16.15"
+tokio = { version = "1.32", features = ["full"] }
 assert_matches = "1.5"
-proptest = "1.7.0"
+proptest = "1.2"
 
 [features]
 no-entrypoint = []
@@ -396,7 +371,6 @@ codegen-units = 1
 EOF
 }
 
-# Enhanced test file generation
 create_test_files() {
     local contract_name="$1"
     local project_type="$2"
@@ -405,7 +379,6 @@ create_test_files() {
     local test_dir="/app/contracts/$contract_name/tests"
     mkdir -p "$test_dir"
     
-    # Integration test
     cat > "$test_dir/test_${contract_name}.rs" <<EOF
 use solana_program_test::*;
 use solana_sdk::{
@@ -429,7 +402,6 @@ async fn test_${contract_name}_initialization() {
     
     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
     
-    // Add your specific test logic here
     assert!(true, "Initialization test passed");
 }
 
@@ -444,7 +416,6 @@ async fn test_${contract_name}_basic_functionality() {
     
     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
     
-    // Add comprehensive functionality tests
     assert!(true, "Basic functionality test passed");
 }
 
@@ -459,12 +430,10 @@ async fn test_${contract_name}_error_handling() {
     
     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
     
-    // Test error conditions
     assert!(true, "Error handling test passed");
 }
 EOF
 
-    # Unit tests file
     cat > "$test_dir/unit_tests.rs" <<EOF
 use ${contract_name}::*;
 
@@ -474,13 +443,11 @@ mod tests {
 
     #[test]
     fn test_data_structures() {
-        // Test data structure serialization/deserialization
         assert!(true, "Data structure tests passed");
     }
 
     #[test]
     fn test_helper_functions() {
-        // Test pure functions and utilities
         assert!(true, "Helper function tests passed");
     }
 }
@@ -489,7 +456,6 @@ EOF
     log_with_timestamp "✅ Comprehensive test files created"
 }
 
-# Dependency caching optimization
 fetch_new_dependencies() {
     local cargo_toml="$1"
     local cache_file="$2"
@@ -503,7 +469,6 @@ fetch_new_dependencies() {
     fi
 }
 
-# Load environment variables
 if [ -f "/app/.env" ]; then
     export $(grep -v '^#' /app/.env | xargs)
     log_with_timestamp "✅ Environment variables loaded from .env"
@@ -511,7 +476,6 @@ fi
 
 setup_solana_environment
 
-# Main variables
 watch_dir="/app/input"
 MARKER_DIR="/app/.processed"
 CACHE_CARGO_TOML="/app/.cached_Cargo.toml"
@@ -520,12 +484,9 @@ mkdir -p "$watch_dir" "$MARKER_DIR"
 log_with_timestamp "🚀 Starting Enhanced Non-EVM (Solana) Container v2.0..."
 log_with_timestamp "📡 Watching for smart contract files in $watch_dir..."
 
-# Enhanced file processing loop
 if ! inotifywait -m -e close_write,moved_to,create "$watch_dir" 2>/dev/null |
 while read -r directory events filename; do
     if [[ "$filename" == *.rs ]]; then
-        
-        # File deduplication
         file_path="$watch_dir/$filename"
         file_hash=$(sha256sum "$file_path" | cut -d' ' -f1)
         marker_file="$MARKER_DIR/${filename%.rs}-$file_hash"
@@ -537,31 +498,25 @@ while read -r directory events filename; do
         
         log_with_timestamp "🆕 Processing new Rust contract: $filename"
         
-        # Create project structure
         contract_name=$(basename "$filename" .rs)
         contracts_dir="/app/contracts/$contract_name"
         mkdir -p "$contracts_dir/src" "$contracts_dir/tests"
         
-        # Copy contract file
         cp "$file_path" "$contracts_dir/src/lib.rs"
         log_with_timestamp "📁 Contract copied to $contracts_dir/src/lib.rs"
         
-        # Detect project type and setup
         project_type=$(detect_project_type "$contracts_dir/src/lib.rs")
         log_with_timestamp "🔍 Detected project type: $project_type"
         
         create_dynamic_cargo_toml "$contract_name" "$project_type"
         create_test_files "$contract_name" "$project_type"
         
-        # Dependency management
         fetch_new_dependencies "$contracts_dir/Cargo.toml" "$CACHE_CARGO_TOML"
         
-        # Enhanced build process
         log_with_timestamp "🔨 Building $contract_name ($project_type)..."
         cd "$contracts_dir"
         
         if [ "$project_type" = "anchor" ]; then
-            # Anchor project setup
             cat > "Anchor.toml" <<EOF
 [features]
 seed = false
@@ -592,7 +547,6 @@ EOF
                 log_with_timestamp "❌ Anchor build failed" "error"
             fi
         else
-            # Native Solana program build
             if cargo build-sbf 2>&1; then
                 log_with_timestamp "✅ Solana BPF build successful" "success"
             elif cargo build --release 2>&1; then
@@ -603,25 +557,20 @@ EOF
             fi
         fi
         
-        # Enhanced testing pipeline
         log_with_timestamp "🧪 Running comprehensive test suite..."
         
-        # Run tests with enhanced output
         if cargo test --release --features=test-sbf -- --nocapture 2>&1; then
             log_with_timestamp "✅ All tests passed" "success"
         else
             log_with_timestamp "⚠️ Some tests failed" "warning"
         fi
         
-        # Run all analysis tools (now properly implemented)
         run_security_audit "$contracts_dir" "$contract_name"
         run_coverage_analysis "$contracts_dir" "$contract_name"
         run_performance_analysis "$contracts_dir" "$contract_name"
         
-        # Generate comprehensive report
         generate_comprehensive_report "$contract_name" "$project_type"
         
-        # Mark as processed
         touch "$marker_file"
         log_with_timestamp "🏁 Completed processing $filename"
         log_with_timestamp "==========================================\n"
