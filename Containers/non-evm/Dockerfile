@@ -1,5 +1,6 @@
 FROM rust:bookworm
 
+# Install minimal required dependencies
 RUN apt-get update && \
     apt-get install -y \
     build-essential \
@@ -15,30 +16,39 @@ RUN apt-get update && \
     npm && \
     rm -rf /var/lib/apt/lists/*
 
+# Install sccache for Rust build caching
 RUN cargo install sccache --locked
 
 WORKDIR /root
 
-RUN curl -sSf https://release.anza.xyz/v1.16.15/install | sh && \
-    export PATH="/root/.local/share/solana/install/active_release/bin:$PATH" && \
-    mkdir -p /root/.config/solana && \
-    solana-keygen new --no-bip39-passphrase --silent -o /root/.config/solana/id.json
+# Install Solana using the Agave installer
+RUN curl -sSf https://release.anza.xyz/v2.2.14/install | sh
 
+# Set PATH and initialize
 ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
 
+# Generate keypair
+RUN mkdir -p /root/.config/solana && \
+    solana-keygen new --no-bip39-passphrase -o /root/.config/solana/id.json
+
+# Set up Rust environment with correct toolchain
 RUN rustup default stable && \
     rustup component add clippy rustfmt && \
     rustup target add wasm32-unknown-unknown
 
-RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --tag v0.28.0 --locked && \
+# Install Anchor and other tools
+RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --tag v0.31.0 --locked && \
     cargo install cargo-audit --version 0.21.0 --locked
 
+# Install Node.js dependencies
 COPY ./scripts /app/scripts
 WORKDIR /app/scripts
 RUN npm install axios dotenv
 
+# Create required directories
 RUN mkdir -p /app/input /app/logs /app/.cache/sccache /app/target
 
+# Copy entrypoint script and make it executable
 COPY entrypoint.sh /app/
 RUN chmod +x /app/entrypoint.sh
 
@@ -50,7 +60,7 @@ ENV CARGO_TARGET_DIR=/app/target \
     RUST_LOG=info \
     CARGO_TERM_COLOR=always \
     ANCHOR_WALLET=/root/.config/solana/id.json \
-    SOLANA_VERSION=1.16.15
+    SOLANA_VERSION=2.2.14
 
 WORKDIR /app
 ENTRYPOINT ["/app/entrypoint.sh"]
