@@ -22,7 +22,7 @@ RUN cargo install sccache --locked
 WORKDIR /root
 
 # Install Solana using the Agave installer
-RUN curl -sSf https://release.anza.xyz/v2.2.14/install | sh
+RUN curl -sSf https://release.anza.xyz/v1.16.15/install | sh
 
 # Set PATH and initialize
 ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
@@ -37,7 +37,7 @@ RUN rustup default stable && \
     rustup target add wasm32-unknown-unknown
 
 # Install Anchor and other tools
-RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --tag v0.31.0 --locked && \
+RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --tag v0.28.0 --locked && \
     cargo install cargo-audit --version 0.21.0 --locked
 
 # Install Node.js dependencies
@@ -60,7 +60,7 @@ ENV CARGO_TARGET_DIR=/app/target \
     RUST_LOG=info \
     CARGO_TERM_COLOR=always \
     ANCHOR_WALLET=/root/.config/solana/id.json \
-    SOLANA_VERSION=1.18.25
+    SOLANA_VERSION=1.16.15
 
 WORKDIR /app
 ENTRYPOINT ["/app/entrypoint.sh"]
