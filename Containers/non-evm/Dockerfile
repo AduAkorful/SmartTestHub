@@ -8,30 +8,31 @@ RUN apt-get update && \
     libudev-dev \
     llvm \
     libclang-dev \
-    protobuf-compiler && \
+    protobuf-compiler \
+    curl \
+    git && \
     rm -rf /var/lib/apt/lists/*
 
 # Install sccache for Rust build caching
 RUN cargo install sccache --locked
 
-# Download and install pre-built Solana binaries
 WORKDIR /root
-RUN curl -Lo solana-release-x86_64-unknown-linux-gnu.tar.bz2 \
-    "https://sourceforge.net/projects/solana.mirror/files/v1.18.25/solana-release-x86_64-unknown-linux-gnu.tar.bz2/download" && \
-    tar jxf solana-release-x86_64-unknown-linux-gnu.tar.bz2 && \
-    rm solana-release-x86_64-unknown-linux-gnu.tar.bz2
 
-ENV PATH="/root/solana-release/bin:${PATH}"
+# Install Agave using the official installer with a specific version
+RUN curl -sSf https://release.anza.xyz/v2.2.14/install | sh && \
+    export PATH="/root/.local/share/agave/install/active_release/bin:$PATH" && \
+    agave-install init
+
+ENV PATH="/root/.local/share/agave/install/active_release/bin:${PATH}"
 
 # Generate keypair
 RUN mkdir -p /root/.config/solana && \
     solana-keygen new --no-bip39-passphrase -o /root/.config/solana/id.json
 
-# Set up Rust environment with updated targets
+# Set up Rust environment with correct toolchain
 RUN rustup default stable && \
     rustup component add clippy rustfmt && \
-    rustup target add wasm32-unknown-unknown && \
-    rustup target add sbf-solana-solana
+    rustup target add wasm32-unknown-unknown
 
 # Install Anchor and other tools
 RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --tag v0.30.1 --locked && \
