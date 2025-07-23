@@ -1,5 +1,4 @@
-# Base image with fixed Rust version for compatibility
-FROM rust:1.79.0-bookworm
+FROM rust:bookworm
 
 # Install system dependencies and keep this as a separate layer for caching
 RUN apt-get update && \
@@ -24,22 +23,28 @@ RUN apt-get update && \
 # Install sccache for Rust build caching
 RUN cargo install sccache --locked
 
-# Copy and extract Solana CLI (offline install)
-COPY solana-release-x86_64-unknown-linux-gnu.tar.bz2 /tmp/
-RUN mkdir -p /root/.local/share/solana/install && \
-    tar -xjf /tmp/solana-release-x86_64-unknown-linux-gnu.tar.bz2 -C /root/.local/share/solana/install && \
+# Download and install Solana
+RUN curl -Lo solana-release-x86_64-unknown-linux-gnu.tar.bz2 "https://sourceforge.net/projects/solana.mirror/files/v1.18.25/solana-release-x86_64-unknown-linux-gnu.tar.bz2/download" && \
+    mkdir -p /root/.local/share/solana/install && \
+    tar -xjf solana-release-x86_64-unknown-linux-gnu.tar.bz2 -C /root/.local/share/solana/install && \
     mv /root/.local/share/solana/install/solana-release* /root/.local/share/solana/install/active_release && \
-    rm -f /tmp/solana-release-x86_64-unknown-linux-gnu.tar.bz2
+    rm -f solana-release-x86_64-unknown-linux-gnu.tar.bz2
 
 ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
+
+# Generate Solana keypair
+RUN mkdir -p /root/.config/solana && \
+    solana-keygen new --no-bip39-passphrase -o /root/.config/solana/id.json
 
 # Verify Solana installation
 RUN solana --version
 
-# Set up Rust environment
-RUN rustup default 1.79.0 && \
+# Set up Rust environment with specific version for Solana
+RUN rustup default stable && \
+    rustup update && \
     rustup component add clippy rustfmt && \
-    rustup target add bpf-unknown-unknown
+    rustup target add sbf-solana-solana && \
+    rustup target add wasm32-unknown-unknown
 
 # Install enhanced toolchain with proper versions and security tools
 RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --tag v0.30.1 --locked && \
@@ -48,7 +53,12 @@ RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --tag v0.
     cargo install cargo-benchcmp --locked && \
     cargo install cargo-nextest --locked
 
-# Set up Node.js dependencies
+# Verify installations
+RUN cargo --version && \
+    rustc --version && \
+    anchor --version
+
+# Install node dependencies for enhanced reporting
 WORKDIR /app/scripts
 RUN rm -rf node_modules package-lock.json && \
     npm cache clean --force && \
@@ -62,7 +72,7 @@ COPY scripts ./scripts
 
 # Copy only the Cargo.toml for dependency layer caching
 COPY Cargo.toml ./
-# Generate Cargo.lock if it doesn't exist
+# If Cargo.lock exists, use it; else, generate it on the fly
 RUN mkdir -p src && \
     echo "pub fn dummy() {}" > src/lib.rs && \
     test -f Cargo.lock || cargo generate-lockfile && \
@@ -98,9 +108,13 @@ ENV CARGO_TARGET_DIR=/app/target \
     RUSTFLAGS="-C target-cpu=native -C link-arg=-z -C link-arg=noexecstack" \
     RUST_LOG=info \
     CARGO_TERM_COLOR=always \
-    CARGO_NET_RETRY=10 \
-    CARGO_HTTP_TIMEOUT=30 \
-    CARGO_HTTP_LOW_SPEED_LIMIT=10
+    ANCHOR_WALLET=/root/.config/solana/id.json \
+    SOLANA_VERSION=1.18.25
 
-# Use the entrypoint script
+# Security and performance optimizations
+ENV CARGO_NET_RETRY=10 \
+    CARGO_HTTP_TIMEOUT=30 \
+    CARGO_HTTP_LOW_SPEED_LIMIT=10 \
+    RUST_BACKTRACE=1
+
 ENTRYPOINT ["/app/entrypoint.sh"]
