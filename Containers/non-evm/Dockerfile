@@ -44,19 +44,9 @@ RUN npm cache clean --force
 RUN npm install axios dotenv xml2js
 WORKDIR /app
 
-# Prepare and build the Rust AST cleaner binary
-WORKDIR /app/scripts
-COPY scripts/clean_rust.rs /app/scripts/
-RUN mkdir -p cleaner/src && \
-    mv clean_rust.rs cleaner/src/main.rs && \
-    echo "[package]\nname = \"cleaner\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nsyn = { version = \"2\", features = [\"visit-mut\"] }\nprettyplease = \"0.2\"\nproc-macro2 = \"1\"\nquote = \"1\"\n" > cleaner/Cargo.toml && \
-    cd cleaner && cargo build --release && \
-    cp target/release/cleaner /usr/local/bin/clean_rust
-
-WORKDIR /app
-
 # Copy only the Cargo.toml for dependency layer caching
 COPY Cargo.toml ./
+# If Cargo.lock exists, use it; else, generate it on the fly
 RUN mkdir -p src && echo "pub fn dummy() {}" > src/lib.rs && \
     test -f Cargo.lock || cargo generate-lockfile && \
     cargo fetch && \
