@@ -10,7 +10,10 @@ RUN apt-get update && \
     libclang-dev \
     protobuf-compiler \
     curl \
-    git && \
+    git \
+    inotify-tools \
+    nodejs \
+    npm && \
     rm -rf /var/lib/apt/lists/*
 
 # Install sccache for Rust build caching
@@ -18,11 +21,10 @@ RUN cargo install sccache --locked
 
 WORKDIR /root
 
-# Install Solana using the Agave installer with a specific version
-RUN curl -sSf https://release.anza.xyz/v2.2.14/install | sh && \
-    . /root/.profile && \
-    solana-install init
+# Install Solana using the Agave installer
+RUN curl -sSf https://release.anza.xyz/v2.2.14/install | sh
 
+# Set PATH and initialize
 ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
 
 # Generate keypair
@@ -35,13 +37,20 @@ RUN rustup default stable && \
     rustup target add wasm32-unknown-unknown
 
 # Install Anchor and other tools
-RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --tag v0.30.1 --locked && \
+RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --tag v0.31.0 --locked && \
     cargo install cargo-audit --version 0.21.0 --locked
 
-# Verify installations
-RUN solana --version && \
-    cargo --version && \
-    anchor --version
+# Install Node.js dependencies
+COPY ./scripts /app/scripts
+WORKDIR /app/scripts
+RUN npm install axios dotenv
+
+# Create required directories
+RUN mkdir -p /app/input /app/logs /app/.cache/sccache /app/target
+
+# Copy entrypoint script and make it executable
+COPY entrypoint.sh /app/
+RUN chmod +x /app/entrypoint.sh
 
 ENV CARGO_TARGET_DIR=/app/target \
     RUSTC_WRAPPER=sccache \
@@ -54,4 +63,4 @@ ENV CARGO_TARGET_DIR=/app/target \
     SOLANA_VERSION=1.18.25
 
 WORKDIR /app
-ENTRYPOINT ["/bin/bash"]
+ENTRYPOINT ["/app/entrypoint.sh"]
