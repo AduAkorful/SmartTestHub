@@ -23,7 +23,7 @@ services:
       - smarthub-network
 
   solana-validator:
-    image: solanalabs/solana:v1.17.0
+    image: solanalabs/solana:v1.18.25
     container_name: solana-validator
     command: >
       solana-test-validator --reset --no-bpf-jit --no-poh-speed-test --quiet
@@ -60,6 +60,7 @@ services:
       - RUSTC_WRAPPER=sccache
       - CARGO_TARGET_DIR=/app/target
       - ANCHOR_WALLET=/root/.config/solana/id.json
+      - SOLANA_VERSION=1.18.25
     env_file:
       - .env
     depends_on:
