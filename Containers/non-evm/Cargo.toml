@@ -2,35 +2,45 @@
 name = "placeholder_contract"
 version = "0.1.0"
 edition = "2021"
-authors = ["SmartTestHub"]
-description = "Placeholder Solana smart contract for testing"
+authors = ["SmartTestHub <support@smarthub.com>"]
+description = "Enhanced Solana smart contract testing framework"
 license = "MIT"
-repository = "https://github.com/your-org/smart-test-hub"
-keywords = ["solana", "blockchain", "smart-contract"]
+repository = "https://github.com/AduAkorful/SmartTestHub"
+keywords = ["solana", "blockchain", "smart-contract", "testing"]
 categories = ["cryptography::cryptocurrencies"]
 
 [dependencies]
-anchor-lang = { version = "0.29.0", optional = true }
-anchor-spl = { version = "0.29.0", optional = true }
-solana-program = "1.18.12"               # <-- UPDATED to latest at time of writing
-solana-sdk = "1.18.12"
-borsh = "0.10.3"
-borsh-derive = "0.10.3"
-thiserror = "1.0"
-spl-token = { version = "3.5.0", features = ["no-entrypoint"] }
-spl-associated-token-account = { version = "1.1.2", features = ["no-entrypoint"] }
-arrayref = "0.3.7"
-num-derive = "0.4"
-num-traits = "0.2"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+# Updated to latest versions (addressing critical security issue)
+anchor-lang = { version = "0.30.1", optional = true }
+anchor-spl = { version = "0.30.1", optional = true }
+solana-program = "2.3.0"                # Updated from 1.18.26
+solana-sdk = "2.3.1"                    # Updated from 1.18.26
+borsh = "1.5.7"                         # Updated from 0.10.4
+borsh-derive = "1.5.7"                  # Updated from 0.10.4
+thiserror = "2.0.12"                    # Updated from 1.0.69
+spl-token = { version = "4.0.3", features = ["no-entrypoint"] }
+spl-memo = "4.0.4"                      # Updated from 4.0.0
+spl-associated-token-account = { version = "2.3.0", features = ["no-entrypoint"] }
+arrayref = "0.3.9"
+num-derive = "0.4.2"
+num-traits = "0.2.19"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.141"
+itertools = "0.14.0"                    # Updated from 0.13.0
+subtle = "2.6.1"                        # Updated from 2.4.1
+zeroize = "1.8.1"                       # Updated from 1.3.0
+
+# Performance and testing dependencies
+criterion = { version = "0.5", features = ["html_reports"], optional = true }
+proptest = "1.7.0"
 
 [dev-dependencies]
-solana-program-test = "1.18.12"
-solana-banks-client = "1.18.12"
-tokio = { version = "1.0", features = ["full"] }
+solana-program-test = "2.3.5"           # Updated from 1.18.26
+solana-banks-client = "2.3.5"           # Updated from 1.18.26
+tokio = { version = "1.46", features = ["full", "test-util"] }
 assert_matches = "1.5"
-proptest = "1.0"
+proptest = "1.7.0"
+test-case = "3.3.1"
 
 [lib]
 name = "placeholder_contract"
@@ -42,6 +52,11 @@ default = []
 no-entrypoint = []
 anchor = ["anchor-lang", "anchor-spl"]
 test-sbf = []
+benchmarks = ["criterion"]
+
+# Fix configuration issues from logs
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("custom-heap", "custom-panic"))'] }
 
 [package.metadata.docs.rs]
 all-features = true
@@ -58,5 +73,15 @@ opt-level = 3
 incremental = false
 codegen-units = 1
 
+[profile.bench]
+opt-level = 3
+debug = false
+codegen-units = 1
+lto = true
+
 [workspace]
 resolver = "2"
+
+# Cargo audit configuration
+[package.metadata.audit]
+ignore = []
