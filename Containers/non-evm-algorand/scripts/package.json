@@ -3,9 +3,30 @@
   "version": "1.0.0",
   "description": "Log/report aggregator for Algorand container",
   "main": "aggregate-all-logs.js",
+  "scripts": {
+    "aggregate": "node aggregate-all-logs.js"
+  },
+  "author": "AduAkorful",
+  "license": "MIT",
   "dependencies": {
-    "xml2js": "^0.6.2",
     "axios": "^1.6.0",
-    "dotenv": "^16.0.3"
+    "dotenv": "^16.3.1",
+    "xml2js": "^0.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AduAkorful/SmartTestHub"
+  },
+  "private": true,
+  "metadata": {
+    "generatedAt": "2025-07-24 11:31:19",
+    "generatedBy": "AduAkorful",
+    "containerType": "algorand"
   }
 }
