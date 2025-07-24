@@ -22,6 +22,7 @@ function tryRead(file, fallback = '') {
     return fallback;
   }
 }
+
 function tryList(dir, filter = () => true) {
   try {
     return fs.existsSync(dir) ? fs.readdirSync(dir).filter(filter) : [];
@@ -29,42 +30,49 @@ function tryList(dir, filter = () => true) {
     return [];
   }
 }
+
 function section(title, content) {
   return `\n\n## ${title}\n\n${content || '_No output found._'}`;
 }
+
 function aggregateDir(dir, filter = () => true) {
   return tryList(dir, f => f.startsWith(contractName) && filter(f))
     .map(f => `### File: ${f}\n` + tryRead(path.join(dir, f)))
     .join('\n\n');
 }
 
-const mainReportNote = `Note: After aggregation, only the main AI-enhanced report (${contractName}-report.md) is retained in /app/logs/reports and /app/contracts/${contractName} for this contract.`;
-
 let fullLog = '';
 fullLog += section('Algorand Container Procedure Log', tryRead('/app/logs/test.log'));
-fullLog += section('Lint (flake8)', aggregateDir('/app/logs/security', f => f.endsWith('-flake8.log')));
-fullLog += section('Security (bandit)', aggregateDir('/app/logs/security', f => f.endsWith('-bandit.log')));
+fullLog += section('PyTest Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.xml') || f.endsWith('.txt')));
 fullLog += section('Coverage Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.xml') || f.endsWith('.html')));
-fullLog += section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
+fullLog += section('Security Analysis', aggregateDir('/app/logs/security', f => f.endsWith('.log')));
+fullLog += section('TEAL Analysis', tryRead(`/app/logs/${contractName}-teal.log`));
+fullLog += section('Performance Metrics', aggregateDir('/app/logs/performance'));
+fullLog += section('AI Summaries and Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
+fullLog += section('Other Logs', aggregateDir('/app/logs', f => f.endsWith('.log') && !f.includes('test.log')));
+
 fullLog += section('Tool Run Confirmation', `
 The following tools' logs were aggregated for ${contractName}:
-- Compilation: test.log, build logs
-- Testing: test.log, coverage (all files in /app/logs/coverage starting with ${contractName})
-- Lint: flake8 (all files in /app/logs/security starting with ${contractName})
-- Security: Bandit (all files in /app/logs/security starting with ${contractName})
+- Compilation: test.log, TEAL compilation logs
+- Testing: PyTest (all files in /app/logs/reports starting with ${contractName}), coverage (all files in /app/logs/coverage starting with ${contractName})
+- Security: Bandit, MyPy, Flake8 (all files in /app/logs/security starting with ${contractName})
+- Performance: Metrics and benchmarks (all files in /app/logs/performance starting with ${contractName})
 - AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
 If any section above says "_No output found._", that log was missing or the tool did not run.
 
-${mainReportNote}
+Metadata:
+- Generated: 2025-07-24 11:27:53 UTC
+- User: AduAkorful
+- Contract: ${contractName}
 `);
 
 const prompt = `
-You are an expert Algorand (PyTeal) smart contract auditor.
-You are given the **raw logs and reports** from a full Algorand smart contract testing and analysis pipeline (see below).
-- Organize the output into logical sections: Compilation, Tests, Lint, Security, Coverage, AI/Manual summaries.
+You are an expert smart contract auditor (Algorand/PyTeal context).
+You are given the **raw logs and reports** from a full smart contract testing and analysis pipeline (see below).
+- Organize the output into logical sections: Compilation, Tests, Security, Coverage, and AI/Manual summaries.
 - For each tool, summarize key findings in clear, actionable language.
 - For each error, warning, or failed test, provide insights to help resolve the issue.
-- For security findings (including Bandit and lint), explain risks and recommend best practices or code changes.
+- For security findings, explain risks and recommend best practices or code changes.
 - Highlight important information with bullet points or tables.
 - Make the summary comprehensive, structured, and developer-friendly.
 
@@ -95,7 +103,7 @@ async function enhanceReport() {
         timeout: 60000
       }
     );
-    const aiSummary =
+    const aiSummary = 
       response.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
       "Error: Malformed response from Gemini API.";
     fs.writeFileSync(outputFile, aiSummary);
