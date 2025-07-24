@@ -178,7 +178,7 @@ generate_comprehensive_report() {
 ## 🏗️ Build Results
 
 ### Dependencies Status
-- **Solana Program:** 2.3.5 ✅
+- **Solana Program:** ~1.16 ✅
 - **Borsh:** 0.10.3 ✅  
 - **SPL Token:** 4.0.0 ✅
 
@@ -335,26 +335,26 @@ edition = "2021"
 description = "Generated Solana smart contract: $contract_name"
 
 [dependencies]
-solana-program = "=2.3.5"
+solana-program = "~1.16"
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
 thiserror = "1.0.49"
 num-derive = "0.4"
 num-traits = "0.2"
-spl-token = { version = "=4.0.0", features = ["no-entrypoint"] }
-spl-associated-token-account = { version = "=2.2.0", features = ["no-entrypoint"] }
+spl-token = { version = "4.0", features = ["no-entrypoint"] }
+spl-associated-token-account = { version = "2.2", features = ["no-entrypoint"] }
 arrayref = "0.3.7"
 
 $(if [ "$project_type" = "anchor" ]; then
 cat <<EOF2
-anchor-lang = "=0.31.0"
-anchor-spl = "=0.31.0"
+anchor-lang = "0.28"
+anchor-spl = "0.28"
 EOF2
 fi)
 
 [dev-dependencies]
-solana-program-test = "=2.3.5"
-solana-sdk = "=2.3.5"
+solana-program-test = "~1.16"
+solana-sdk = "~1.16"
 tokio = { version = "1.32", features = ["full"] }
 assert_matches = "1.5"
 proptest = "1.2"
