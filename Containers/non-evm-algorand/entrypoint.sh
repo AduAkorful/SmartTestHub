@@ -10,6 +10,9 @@ PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+# Test template location
+TEST_TEMPLATE="/app/scripts/test_template.py"
+
 # Expanded log directory structure
 LOG_FILE="/app/logs/test.log"
 ERROR_LOG="/app/logs/error.log"
@@ -52,7 +55,7 @@ done
 log_with_timestamp() {
     local message="$1"
     local log_type="${2:-info}"
-    local timestamp="[$(date '+%Y-%m-%d %H:%M:%S')]"
+    local timestamp="[$(date '+%Y-%m-24 %H:%M:%S')]"
     local color_code=""
     local icon=""
     local log_file="$LOG_FILE"
@@ -142,40 +145,96 @@ collect_performance_metrics() {
     
     log_with_timestamp "📈 Collecting detailed performance metrics..." "metrics"
     
-    # TEAL metrics
+    # TEAL metrics with enhanced error handling
     python3 -c "
 import sys
 sys.path.append('$contracts_dir/src')
-from contract import approval_program
-from pyteal import *
-import json
-import time
+try:
+    from contract import approval_program
+    from pyteal import *
+    import json
+    import time
 
-start_time = time.time()
-teal = compileTeal(approval_program(), mode=Mode.Application, version=6)
-compile_time = time.time() - start_time
+    start_time = time.time()
+    teal = compileTeal(approval_program(), mode=Mode.Application, version=6)
+    compile_time = time.time() - start_time
 
-metrics = {
-    'teal_size': len(teal.split('\\n')),
-    'opcode_count': len([l for l in teal.split('\\n') if l and not l.startswith(('#', '//'))]),
-    'compilation_time': compile_time,
-    'state_ops': {
-        'global_get': teal.count('app_global_get'),
-        'local_get': teal.count('app_local_get'),
-        'global_put': teal.count('app_global_put'),
-        'local_put': teal.count('app_local_put')
-    },
-    'branching': {
-        'if_statements': teal.count('bz') + teal.count('bnz'),
-        'switches': teal.count('switch')
-    },
-    'timestamp': '$(date '+%Y-%m-%d %H:%M:%S')',
-    'contract': '$contract_name'
-}
+    metrics = {
+        'teal_size': len(teal.split('\\n')),
+        'opcode_count': len([l for l in teal.split('\\n') if l and not l.startswith(('#', '//'))]),
+        'compilation_time': compile_time,
+        'state_ops': {
+            'global_get': teal.count('app_global_get'),
+            'local_get': teal.count('app_local_get'),
+            'global_put': teal.count('app_global_put'),
+            'local_put': teal.count('app_local_put')
+        },
+        'branching': {
+            'if_statements': teal.count('bz') + teal.count('bnz'),
+            'switches': teal.count('switch')
+        },
+        'timestamp': '$(date '+%Y-%m-%d %H:%M:%S')',
+        'contract': '$contract_name'
+    }
 
-with open('/app/logs/metrics/${contract_name}-detailed-metrics.json', 'w') as f:
-    json.dump(metrics, f, indent=2)
-" 2>/dev/null || log_with_timestamp "⚠️ Failed to collect TEAL metrics" "error"
+    # Additional analysis for contract complexity
+    metrics['complexity'] = {
+        'scratch_vars': len([l for l in teal.split('\\n') if 'store' in l.lower()]),
+        'inner_transactions': teal.count('itxn_begin'),
+        'asset_operations': sum(teal.count(op) for op in ['asset_holding_get', 'asset_params_get']),
+        'box_operations': sum(teal.count(op) for op in ['box_get', 'box_put', 'box_del']),
+    }
+
+    # Check for potential optimizations
+    metrics['optimization_hints'] = []
+    if metrics['opcode_count'] > 400:
+        metrics['optimization_hints'].append('High opcode count - consider splitting logic')
+    if metrics['state_ops']['global_get'] + metrics['state_ops']['local_get'] > 15:
+        metrics['optimization_hints'].append('High number of state reads - consider caching')
+
+    with open('/app/logs/metrics/${contract_name}-detailed-metrics.json', 'w') as f:
+        json.dump(metrics, f, indent=2)
+except Exception as e:
+    error_data = {
+        'error': str(e),
+        'timestamp': '$(date '+%Y-%m-%d %H:%M:%S')',
+        'contract': '$contract_name'
+    }
+    with open('/app/logs/metrics/${contract_name}-error-metrics.json', 'w') as f:
+        json.dump(error_data, f, indent=2)
+    sys.exit(1)
+" 2>/dev/null || {
+        log_with_timestamp "⚠️ Failed to collect TEAL metrics" "error"
+        echo "{
+            \"error\": \"TEAL metrics collection failed\",
+            \"timestamp\": \"$(date '+%Y-%m-%d %H:%M:%S')\",
+            \"contract\": \"$contract_name\"
+        }" > "/app/logs/metrics/${contract_name}-error-metrics.json"
+    }
+
+    # Additional performance metrics
+    {
+        # Memory usage analysis
+        local mem_usage=$(ps -o rss= -p $$)
+        
+        # Execution time tracking
+        local exec_metrics="{
+            \"memory_usage_kb\": $mem_usage,
+            \"timestamp\": \"$(date '+%Y-%m-%d %H:%M:%S')\",
+            \"contract\": \"$contract_name\"
+        }"
+        echo "$exec_metrics" > "/app/logs/metrics/${contract_name}-execution-metrics.json"
+        
+        # Record system metrics
+        local sys_metrics="{
+            \"cpu_usage\": $(top -bn1 | grep "Cpu(s)" | awk '{print $2}'),
+            \"memory_total\": $(free -m | awk '/Mem:/ {print $2}'),
+            \"memory_used\": $(free -m | awk '/Mem:/ {print $3}'),
+            \"timestamp\": \"$(date '+%Y-%m-%d %H:%M:%S')\",
+            \"contract\": \"$contract_name\"
+        }"
+        echo "$sys_metrics" > "/app/logs/metrics/${contract_name}-system-metrics.json"
+    } 2>/dev/null || log_with_timestamp "⚠️ Failed to collect system metrics" "warning"
 }
 
 # Comprehensive test suite runner with enhanced error handling
@@ -187,16 +246,21 @@ run_comprehensive_tests() {
     
     # Setup test environment
     export PYTHONPATH="$contracts_dir/src:$PYTHONPATH"
+    export CONTRACT_NAME="$contract_name"
+    
+    # Create test result directory
+    local test_results_dir="/app/logs/reports/${contract_name}"
+    mkdir -p "$test_results_dir"
     
     # Unit Tests with enhanced reporting
     log_with_timestamp "🧪 Running unit tests..." "debug"
     if pytest --cov="$contracts_dir/src" \
              --cov-report=term \
-             --cov-report=xml:/app/logs/coverage/${contract_name}-coverage.xml \
-             --cov-report=html:/app/logs/coverage/${contract_name}-coverage-html \
-             --junitxml=/app/logs/reports/${contract_name}-junit.xml \
+             --cov-report=xml:"$test_results_dir/coverage.xml" \
+             --cov-report=html:"$test_results_dir/coverage-html" \
+             --junitxml="$test_results_dir/junit.xml" \
              --timeout=30 \
-             -v "$contracts_dir/tests/" 2>&1 | tee /app/logs/reports/${contract_name}-unittest.log; then
+             -v "$contracts_dir/tests/" 2>&1 | tee "$test_results_dir/unittest.log"; then
         log_with_timestamp "✅ Unit tests completed successfully" "success"
     else
         log_with_timestamp "⚠️ Unit tests completed with issues" "warning"
@@ -205,9 +269,9 @@ run_comprehensive_tests() {
     # Integration Tests with timeout and retry
     log_with_timestamp "🔄 Running integration tests..." "integration"
     for i in {1..3}; do
-        if pytest -m integration \
-                 --junitxml=/app/logs/reports/${contract_name}-integration.xml \
-                 "$contracts_dir/tests/" 2>&1 | tee /app/logs/reports/${contract_name}-integration.log; then
+        if CONTRACT_NAME="$contract_name" pytest -m integration \
+                 --junitxml="$test_results_dir/integration.xml" \
+                 "$contracts_dir/tests/" 2>&1 | tee "$test_results_dir/integration.log"; then
             log_with_timestamp "✅ Integration tests completed successfully" "success"
             break
         else
@@ -219,9 +283,9 @@ run_comprehensive_tests() {
     
     # Performance Tests with metrics
     log_with_timestamp "⚡ Running performance tests..." "performance"
-    if pytest -m performance \
-             --junitxml=/app/logs/reports/${contract_name}-performance.xml \
-             "$contracts_dir/tests/" 2>&1 | tee /app/logs/reports/${contract_name}-performance.log; then
+    if CONTRACT_NAME="$contract_name" pytest -m performance \
+             --junitxml="$test_results_dir/performance.xml" \
+             "$contracts_dir/tests/" 2>&1 | tee "$test_results_dir/performance.log"; then
         log_with_timestamp "✅ Performance tests completed successfully" "success"
     else
         log_with_timestamp "⚠️ Performance tests completed with issues" "warning"
@@ -233,34 +297,73 @@ run_comprehensive_tests() {
     # Security Analysis with enhanced reporting
     log_with_timestamp "🛡️ Running comprehensive security analysis..." "security"
     
-    # Bandit security scan
-    bandit -r "$contracts_dir/src/" -f txt -o /app/logs/security/${contract_name}-bandit.log || \
+    # Bandit security scan with configuration
+    bandit -r "$contracts_dir/src/" \
+           -f txt \
+           -o "$test_results_dir/bandit.log" \
+           --confidence-level high \
+           --severity-level medium || \
         log_with_timestamp "⚠️ Bandit security scan completed with issues" "warning"
     
     # Static Analysis with detailed reporting
     log_with_timestamp "🔍 Running static analysis..." "debug"
-    mypy "$contracts_dir/src/" --strict > /app/logs/security/${contract_name}-mypy.log 2>&1 || \
+    
+    # MyPy type checking with strict mode
+    mypy "$contracts_dir/src/" \
+         --strict \
+         --show-error-codes \
+         --show-error-context \
+         --pretty \
+         > "$test_results_dir/mypy.log" 2>&1 || \
         log_with_timestamp "⚠️ MyPy type checking completed with issues" "warning"
     
-    flake8 "$contracts_dir/src/" > /app/logs/security/${contract_name}-flake8.log 2>&1 || \
+    # Flake8 style checking with detailed configuration
+    flake8 "$contracts_dir/src/" \
+           --max-line-length=88 \
+           --extend-ignore=E203 \
+           --statistics \
+           --show-source \
+           > "$test_results_dir/flake8.log" 2>&1 || \
         log_with_timestamp "⚠️ Flake8 style checking completed with issues" "warning"
     
-    # Code Formatting check
+    # Code Formatting check with Black
     log_with_timestamp "✨ Checking code formatting..." "debug"
-    black "$contracts_dir/src/" --check > /app/logs/security/${contract_name}-black.log 2>&1 || \
+    black "$contracts_dir/src/" \
+          --check \
+          --diff \
+          > "$test_results_dir/black.log" 2>&1 || \
         log_with_timestamp "⚠️ Black formatting check completed with issues" "warning"
     
     # TEAL Analysis with enhanced error handling
     log_with_timestamp "📝 Analyzing TEAL output..." "debug"
     if ! python3 -c "
-from pyteal import *
 import sys
 sys.path.append('$contracts_dir/src')
-from contract import approval_program
-teal = compileTeal(approval_program(), mode=Mode.Application, version=6)
-print(teal)" > /app/logs/${contract_name}-teal.log 2>&1; then
+try:
+    from contract import approval_program
+    from pyteal import *
+    teal = compileTeal(approval_program(), mode=Mode.Application, version=6)
+    print(teal)
+except Exception as e:
+    print(f'Error: {str(e)}', file=sys.stderr)
+    sys.exit(1)
+" > "$test_results_dir/teal.log" 2> "$test_results_dir/teal-error.log"; then
         log_with_timestamp "❌ TEAL compilation failed" "error"
+        cat "$test_results_dir/teal-error.log" >> "$ERROR_LOG"
     fi
+    
+    # Generate test summary
+    {
+        echo "Test Summary for $contract_name"
+        echo "================================"
+        echo "Timestamp: $(date '+%Y-%m-24 %H:%M:%S')"
+        echo "Unit Tests: $(grep "failed\|passed" "$test_results_dir/unittest.log" | tail -n1)"
+        echo "Integration Tests: $(grep "failed\|passed" "$test_results_dir/integration.log" | tail -n1)"
+        echo "Performance Tests: $(grep "failed\|passed" "$test_results_dir/performance.log" | tail -n1)"
+        echo "Security Issues: $(grep "Issues Identified" "$test_results_dir/bandit.log" | tail -n1)"
+        echo "Type Issues: $(grep "Found" "$test_results_dir/mypy.log" | tail -n1)"
+        echo "Style Issues: $(grep "summary" "$test_results_dir/flake8.log" | tail -n1)"
+    } > "$test_results_dir/summary.txt"
 }
 
 # Main execution with enhanced watch/polling logic
@@ -271,7 +374,7 @@ mkdir -p "$watch_dir" "$MARKER_DIR"
 log_with_timestamp "🚀 Starting Enhanced Algorand Container v2.0..."
 log_with_timestamp "📡 Watching for PyTeal smart contract files in $watch_dir..."
 log_with_timestamp "👤 Current User: AduAkorful"
-log_with_timestamp "🕒 Start Time: 2025-07-24 17:29:29 UTC"
+log_with_timestamp "🕒 Start Time: 2025-07-24 19:41:24 UTC"
 
 process_contract() {
     local file="$1"
@@ -300,13 +403,22 @@ process_contract() {
         log_with_timestamp "🔨 Setting up contract directory structure..." "debug"
         mkdir -p "$CONTRACTS_DIR/src" "$CONTRACTS_DIR/tests"
         
-        # Copy contract and test files
+        # Copy contract and create necessary files
         cp "$file" "$CONTRACTS_DIR/src/contract.py"
-        if [ ! -f "$CONTRACTS_DIR/tests/test_${CONTRACT_NAME}.py" ]; then
-            cp /app/tests/test_contract_suite.py "$CONTRACTS_DIR/tests/test_${CONTRACT_NAME}.py" 2>/dev/null || \
-                log_with_timestamp "⚠️ Failed to copy test suite template" "warning"
-            log_with_timestamp "🧪 Copied comprehensive test suite for $CONTRACT_NAME" "success"
+        touch "$CONTRACTS_DIR/src/__init__.py"
+        touch "$CONTRACTS_DIR/tests/__init__.py"
+        
+        # Copy dynamic test template
+        if [ -f "$TEST_TEMPLATE" ]; then
+            cp "$TEST_TEMPLATE" "$CONTRACTS_DIR/tests/test_contract.py"
+            log_with_timestamp "🧪 Copied dynamic test template for $CONTRACT_NAME" "success"
+        else
+            log_with_timestamp "⚠️ Test template not found at $TEST_TEMPLATE" "error"
+            return 1
         fi
+        
+        # Export contract name for test environment
+        export CONTRACT_NAME
         
         # Run tests and analysis
         run_comprehensive_tests "$CONTRACT_NAME" "$CONTRACTS_DIR"
@@ -327,18 +439,28 @@ process_contract() {
         log_with_timestamp "🏁 Completed processing $filename (duration: ${duration}s)" "success"
         log_with_timestamp "===========================================" "debug"
         
-        # Record metrics
+        # Record detailed execution metrics
         echo "{
             \"contract\": \"$CONTRACT_NAME\",
             \"timestamp\": \"$(date -u '+%Y-%m-%d %H:%M:%S')\",
             \"duration\": $duration,
-            \"status\": \"completed\"
+            \"status\": \"completed\",
+            \"test_summary\": {
+                \"unit_tests\": $(grep -c "PASSED" "/app/logs/reports/${CONTRACT_NAME}/unittest.log" || echo 0),
+                \"integration_tests\": $(grep -c "PASSED" "/app/logs/reports/${CONTRACT_NAME}/integration.log" || echo 0),
+                \"performance_tests\": $(grep -c "PASSED" "/app/logs/reports/${CONTRACT_NAME}/performance.log" || echo 0)
+            },
+            \"system_metrics\": {
+                \"cpu_usage\": $(top -bn1 | grep "Cpu(s)" | awk '{print $2}'),
+                \"memory_used\": $(free -m | awk '/Mem:/ {print $3}'),
+                \"disk_usage\": $(df -h /app | awk 'NR==2 {print $5}' | sed 's/%//')
+            }
         }" > "/app/logs/metrics/${CONTRACT_NAME}-execution-metrics.json"
         
     } 2>&1 | tee -a "/app/logs/debug/${CONTRACT_NAME}-processing.log"
 }
 
-# Primary monitoring using inotifywait
+# Primary monitoring using inotifywait with enhanced error handling
 if ! inotifywait -m -e close_write,moved_to,create "$watch_dir" 2>/dev/null |
     while read -r directory events filename; do
         if [[ "$filename" =~ \.py$ ]]; then
@@ -350,7 +472,7 @@ if ! inotifywait -m -e close_write,moved_to,create "$watch_dir" 2>/dev/null |
         fi
     done
 then
-    # Fallback polling mechanism
+    # Fallback polling mechanism with enhanced monitoring
     log_with_timestamp "❌ inotifywait failed, switching to fallback polling mechanism" "warning"
     
     while true; do
@@ -361,25 +483,128 @@ then
             process_contract "$file"
         done
         
-        # Record health check
+        # Record health check with enhanced metrics
         echo "{
             \"timestamp\": \"$(date -u '+%Y-%m-%d %H:%M:%S')\",
             \"status\": \"polling\",
-            \"last_check\": \"$(date -u '+%Y-%m-%d %H:%M:%S')\"
+            \"last_check\": \"$(date -u '+%Y-%m-%d %H:%M:%S')\",
+            \"system_health\": {
+                \"cpu_usage\": $(top -bn1 | grep "Cpu(s)" | awk '{print $2}'),
+                \"memory_used\": $(free -m | awk '/Mem:/ {print $3}'),
+                \"disk_usage\": $(df -h /app | awk 'NR==2 {print $5}' | sed 's/%//'),
+                \"process_count\": $(ps aux | grep -c "[p]ython")
+            }
         }" > "/app/logs/metrics/container-health.json"
         
         sleep 5
     done
 fi
 
-# Error handling for script termination
-cleanup() {
-    log_with_timestamp "🛑 Container stopping... Recording final state" "warning"
+# Error handling for specific signals
+handle_signal() {
+    local signal=$1
+    local pid=$2
+    local timestamp=$(date -u '+%Y-%m-%d %H:%M:%S')
+    
+    log_with_timestamp "⚠️ Received signal $signal" "warning"
+    
     echo "{
-        \"timestamp\": \"$(date -u '+%Y-%m-%d %H:%M:%S')\",
-        \"status\": \"stopped\",
+        \"timestamp\": \"$timestamp\",
+        \"signal\": \"$signal\",
+        \"pid\": $pid,
+        \"status\": \"interrupted\",
         \"user\": \"AduAkorful\"
-    }" > "/app/logs/metrics/container-final-state.json"
+    }" > "/app/logs/metrics/interrupt-state.json"
+    
+    cleanup
+    exit 1
 }
 
+# Enhanced cleanup function
+cleanup() {
+    local exit_code=$?
+    local timestamp=$(date -u '+%Y-%m-%d %H:%M:%S')
+    
+    log_with_timestamp "🛑 Container stopping... Recording final state" "warning"
+    
+    # Save processing state
+    for marker in "$MARKER_DIR"/*.processed; do
+        if [ -f "$marker" ]; then
+            contract_name=$(basename "$marker" .py.processed)
+            if [ -d "/app/contracts/$contract_name" ]; then
+                # Archive contract state
+                tar -czf "/app/logs/archive/${contract_name}-$(date +%s).tar.gz" \
+                    -C "/app/contracts" "$contract_name" 2>/dev/null || true
+            fi
+        fi
+    done
+    
+    # Generate final metrics
+    echo "{
+        \"timestamp\": \"$timestamp\",
+        \"status\": \"stopped\",
+        \"exit_code\": $exit_code,
+        \"user\": \"AduAkorful\",
+        \"uptime\": $SECONDS,
+        \"processed_contracts\": $(find "$MARKER_DIR" -type f | wc -l),
+        \"system_state\": {
+            \"cpu_usage\": $(top -bn1 | grep "Cpu(s)" | awk '{print $2}'),
+            \"memory_used\": $(free -m | awk '/Mem:/ {print $3}'),
+            \"disk_usage\": $(df -h /app | awk 'NR==2 {print $5}' | sed 's/%//'),
+            \"process_count\": $(ps aux | grep -c "[p]ython")
+        },
+        \"error_summary\": {
+            \"total_errors\": $(grep -c "ERROR" "$ERROR_LOG" 2>/dev/null || echo 0),
+            \"last_error\": \"$(tail -n 1 "$ERROR_LOG" 2>/dev/null || echo 'None')\"
+        }
+    }" > "/app/logs/metrics/container-final-state.json"
+    
+    # Generate final report
+    {
+        echo "Container Execution Summary"
+        echo "=========================="
+        echo "Start Time: 2025-07-24 19:42:22 UTC"
+        echo "End Time: $timestamp"
+        echo "User: AduAkorful"
+        echo "Exit Code: $exit_code"
+        echo "Total Runtime: $SECONDS seconds"
+        echo ""
+        echo "Processed Contracts:"
+        find "$MARKER_DIR" -type f -exec basename {} .processed \;
+        echo ""
+        echo "Error Summary:"
+        tail -n 10 "$ERROR_LOG" 2>/dev/null || echo "No errors recorded"
+    } > "/app/logs/reports/final-execution-report.md"
+    
+    # Compress logs
+    log_with_timestamp "📦 Archiving logs..." "debug"
+    tar -czf "/app/logs/archive/logs-$(date +%s).tar.gz" \
+        -C "/app/logs" \
+        --exclude="archive" \
+        . 2>/dev/null || true
+    
+    log_with_timestamp "👋 Container stopped. Final reports available in /app/logs/reports" "success"
+}
+
+# Set up signal handlers
+trap 'handle_signal SIGTERM $$' SIGTERM
+trap 'handle_signal SIGINT $$' SIGINT
+trap 'handle_signal SIGHUP $$' SIGHUP
 trap cleanup EXIT
+
+# Create archive directory
+mkdir -p "/app/logs/archive"
+chmod 777 "/app/logs/archive"
+
+# Record container start state
+echo "{
+    \"timestamp\": \"2025-07-24 19:42:22\",
+    \"status\": \"started\",
+    \"user\": \"AduAkorful\",
+    \"system_state\": {
+        \"cpu_usage\": $(top -bn1 | grep "Cpu(s)" | awk '{print $2}'),
+        \"memory_used\": $(free -m | awk '/Mem:/ {print $3}'),
+        \"disk_usage\": $(df -h /app | awk 'NR==2 {print $5}' | sed 's/%//'),
+        \"process_count\": $(ps aux | grep -c "[p]ython")
+    }
+}" > "/app/logs/metrics/container-start-state.json"
