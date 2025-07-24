@@ -24,6 +24,7 @@ COPY tests ./tests
 COPY config ./config
 COPY scripts/aggregate-all-logs.js ./scripts/
 COPY entrypoint.sh ./
+COPY tests/test_contract_suite.py /app/tests/
 
 RUN chmod +x /app/entrypoint.sh
 
