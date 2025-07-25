@@ -15,7 +15,9 @@ RUN apt-get update && \
       tzdata \
       inotify-tools \
       nodejs \
-      npm && \
+      npm \
+      jq \
+      wget && \
     rm -rf /var/lib/apt/lists/*
 
 # Install sccache for Rust build caching
@@ -31,13 +33,15 @@ ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
 
 RUN solana --version
 
-# Install anchor, tarpaulin, audit, and clippy (as rustup component) in one layer for cache
+# Install ALL required Rust tools in one layer for better caching
 RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked && \
     cargo install cargo-tarpaulin --locked && \
     cargo install cargo-audit --locked && \
-    rustup component add clippy
+    cargo install cargo-benchcmp --locked && \
+    rustup component add clippy && \
+    rustup component add rustfmt
 
-# Install node dependencies for log aggregation (no package.json required)
+# Install node dependencies for log aggregation
 WORKDIR /app/scripts
 RUN rm -rf node_modules package-lock.json
 RUN npm cache clean --force
@@ -61,7 +65,14 @@ COPY scripts ./scripts
 
 RUN chmod +x /app/entrypoint.sh || true
 
-RUN mkdir -p /app/logs/coverage /app/logs/reports /app/logs/benchmarks /app/logs/security /app/logs/xray
+# Create all necessary log directories
+RUN mkdir -p /app/logs/coverage \
+             /app/logs/reports \
+             /app/logs/benchmarks \
+             /app/logs/security \
+             /app/logs/xray \
+             /app/logs/analysis \
+             /app/contracts
 
 ENV CARGO_TARGET_DIR=/app/target
 ENV RUSTC_WRAPPER=sccache
