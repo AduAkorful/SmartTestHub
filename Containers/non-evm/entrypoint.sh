@@ -105,6 +105,7 @@ run_performance_analysis() {
     log_with_timestamp "⚡ Running performance analysis for $contract_name..." "performance"
     
     mkdir -p /app/logs/benchmarks
+    mkdir -p "$contracts_dir/benches"
     local bench_log="/app/logs/benchmarks/${contract_name}-benchmarks.log"
     
     # Create a simple benchmark test
@@ -136,8 +137,6 @@ EOF
         echo 'name = "benchmark"' >> "$contracts_dir/Cargo.toml"
         echo 'harness = false' >> "$contracts_dir/Cargo.toml"
     fi
-    
-    mkdir -p "$contracts_dir/benches"
     
     # Run benchmarks
     (cd "$contracts_dir" && cargo bench > "$bench_log" 2>&1) || {
@@ -310,10 +309,23 @@ setup_solana_environment() {
 
 detect_project_type() {
     local file_path="$1"
-    if grep -q "#\[program\]" "$file_path" || grep -q "use anchor_lang::prelude" "$file_path"; then
+    local content=$(cat "$file_path")
+    
+    # Enhanced Anchor detection
+    if echo "$content" | grep -qE "#\[program\]|use anchor_lang::|anchor_lang::prelude|#\[derive\(Accounts\)\]|#\[account\]|anchor_spl::|AnchorSerialize|AnchorDeserialize"; then
         echo "anchor"
-    elif grep -q "entrypoint\!" "$file_path" || grep -q "solana_program::entrypoint\!" "$file_path"; then
+    # Enhanced native Solana program detection  
+    elif echo "$content" | grep -qE "entrypoint\!|solana_program::entrypoint|process_instruction|ProgramResult|solana_program::|declare_id\!|Pubkey|AccountInfo"; then
         echo "native"
+    # SPL Token program detection
+    elif echo "$content" | grep -qE "spl_token::|TokenAccount|Mint|spl_associated_token_account"; then
+        echo "spl"
+    # Metaplex/NFT program detection
+    elif echo "$content" | grep -qE "metaplex|mpl_|TokenMetadata|MasterEdition"; then
+        echo "metaplex"
+    # Generic Solana program (has solana imports but unclear type)
+    elif echo "$content" | grep -qE "solana_|borsh::|BorshSerialize|BorshDeserialize"; then
+        echo "solana_generic"
     else
         echo "unknown"
     fi
@@ -411,6 +423,59 @@ log = "0.4"
 once_cell = "1"
 EOF
             ;;
+        "spl")
+            cat >> "$contracts_dir/Cargo.toml" <<EOF
+
+[dependencies]
+solana-program = "1.18.26"
+solana-sdk = "1.18.26"
+spl-token = { version = "4.0.0", features = ["no-entrypoint"] }
+spl-associated-token-account = { version = "1.1.2", features = ["no-entrypoint"] }
+borsh = "0.10.4"
+borsh-derive = "0.10.4"
+thiserror = "1.0"
+arrayref = "0.3.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1"
+bytemuck = { version = "1.15", features = ["derive"] }
+log = "0.4"
+once_cell = "1"
+EOF
+            ;;
+        "metaplex")
+            cat >> "$contracts_dir/Cargo.toml" <<EOF
+
+[dependencies]
+solana-program = "1.18.26"
+solana-sdk = "1.18.26"
+mpl-token-metadata = "4.1.2"
+spl-token = { version = "4.0.0", features = ["no-entrypoint"] }
+borsh = "0.10.4"
+borsh-derive = "0.10.4"
+thiserror = "1.0"
+arrayref = "0.3.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1"
+log = "0.4"
+EOF
+            ;;
+        "solana_generic")
+            cat >> "$contracts_dir/Cargo.toml" <<EOF
+
+[dependencies]
+solana-program = "1.18.26"
+solana-sdk = "1.18.26"
+borsh = "0.10.4"
+borsh-derive = "0.10.4"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1"
+log = "0.4"
+EOF
+            ;;
         *)
             cat >> "$contracts_dir/Cargo.toml" <<EOF
 
@@ -457,8 +522,6 @@ harness = false
 overflow-checks = true
 lto = "fat"
 codegen-units = 1
-
-[workspace]
 EOF
 }
 
@@ -529,6 +592,237 @@ EOF
     log_with_timestamp "✅ Created test files"
 }
 
+# Enhanced build function with multiple fallback strategies
+attempt_build_with_fallbacks() {
+    local contract_name="$1"
+    local project_type="$2"
+    local contracts_dir="$3"
+    
+    log_with_timestamp "🔨 Building $contract_name ($project_type)..."
+    
+    case $project_type in
+        "anchor")
+            # Strategy 1: Full Anchor build
+            cat > "$contracts_dir/Anchor.toml" <<EOF
+[features]
+seed = false
+skip-lint = false
+
+[programs.localnet]
+$contract_name = "target/deploy/${contract_name}.so"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "${SOLANA_URL:-http://solana-validator:8899}"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "cargo test-sbf"
+
+[test]
+startup_wait = 5000
+shutdown_wait = 2000
+upgrade_wait = 1000
+EOF
+            if (cd "$contracts_dir" && anchor build 2>&1 | tee -a "$LOG_FILE"); then
+                log_with_timestamp "✅ Anchor build successful"
+                (cd "$contracts_dir" && anchor test --skip-local-validator | tee -a "$LOG_FILE")
+                echo "true"
+                return 0
+            fi
+            
+            # Strategy 2: Fallback to cargo build for Anchor
+            log_with_timestamp "⚠️ Anchor build failed, trying cargo build fallback..." "error"
+            if (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE"); then
+                log_with_timestamp "✅ Cargo build successful (Anchor fallback)"
+                (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
+                echo "true"
+                return 0
+            fi
+            
+            # Strategy 3: Try with minimal dependencies
+            log_with_timestamp "⚠️ Standard build failed, trying with minimal dependencies..." "error"
+            if attempt_minimal_build "$contract_name" "$contracts_dir"; then
+                echo "true"
+                return 0
+            fi
+            ;;
+            
+        "spl"|"metaplex"|"native"|"solana_generic")
+            # Strategy 1: Standard cargo build
+            if (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE"); then
+                log_with_timestamp "✅ Build successful"
+                (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
+                echo "true"
+                return 0
+            fi
+            
+            # Strategy 2: Try with reduced optimization
+            log_with_timestamp "⚠️ Standard build failed, trying with reduced optimization..." "error"
+            if (cd "$contracts_dir" && cargo build --profile dev 2>&1 | tee -a "$LOG_FILE"); then
+                log_with_timestamp "✅ Build successful (reduced optimization)"
+                echo "true"
+                return 0
+            fi
+            
+            # Strategy 3: Try with minimal dependencies
+            log_with_timestamp "⚠️ Optimized build failed, trying with minimal dependencies..." "error"
+            if attempt_minimal_build "$contract_name" "$contracts_dir"; then
+                echo "true"
+                return 0
+            fi
+            ;;
+            
+        *)
+            # Strategy 1: Basic cargo build
+            if (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE"); then
+                log_with_timestamp "✅ Build successful"
+                (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
+                echo "true"
+                return 0
+            fi
+            
+            # Strategy 2: Try with minimal dependencies
+            log_with_timestamp "⚠️ Standard build failed, trying with minimal dependencies..." "error"
+            if attempt_minimal_build "$contract_name" "$contracts_dir"; then
+                echo "true"
+                return 0
+            fi
+            ;;
+    esac
+    
+    log_with_timestamp "❌ All build strategies failed for $contract_name" "error"
+    echo "false"
+    return 1
+}
+
+# Minimal build attempt with bare essentials
+attempt_minimal_build() {
+    local contract_name="$1"
+    local contracts_dir="$2"
+    
+    # Create minimal Cargo.toml
+    cat > "$contracts_dir/Cargo.toml" <<EOF
+[package]
+name = "$contract_name"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+EOF
+    
+    if (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE"); then
+        log_with_timestamp "✅ Minimal build successful"
+        return 0
+    fi
+    
+    return 1
+}
+
+# Validate contract dependencies and suggest fixes
+validate_contract_dependencies() {
+    local file_path="$1"
+    local contract_name="$2"
+    local project_type="$3"
+    
+    log_with_timestamp "🔍 Validating dependencies for $contract_name..."
+    
+    local content=$(cat "$file_path")
+    local missing_deps=()
+    local warnings=()
+    
+    # Check for common dependency issues
+    if echo "$content" | grep -q "use anchor_lang::" && [ "$project_type" != "anchor" ]; then
+        warnings+=("Contract uses Anchor but not detected as Anchor project")
+    fi
+    
+    if echo "$content" | grep -q "use spl_token::" && ! echo "$content" | grep -q "spl-token"; then
+        missing_deps+=("spl-token")
+    fi
+    
+    if echo "$content" | grep -q "use spl_associated_token_account::" && ! echo "$content" | grep -q "spl-associated-token-account"; then
+        missing_deps+=("spl-associated-token-account")
+    fi
+    
+    if echo "$content" | grep -q "use metaplex\|use mpl_" && ! echo "$content" | grep -q "mpl-token-metadata"; then
+        missing_deps+=("mpl-token-metadata")
+    fi
+    
+    # Check for version compatibility issues
+    if echo "$content" | grep -qE "solana_program::[0-9]|solana-program.*[0-9]"; then
+        warnings+=("Hardcoded Solana version detected - may cause compatibility issues")
+    fi
+    
+    # Check for unsafe patterns
+    if echo "$content" | grep -q "unsafe"; then
+        warnings+=("Unsafe code detected - may cause security issues")
+    fi
+    
+    # Log findings
+    if [ ${#missing_deps[@]} -gt 0 ]; then
+        log_with_timestamp "⚠️ Missing dependencies detected: ${missing_deps[*]}" "error"
+        # Auto-add missing dependencies to project type detection
+        if [[ " ${missing_deps[*]} " =~ " spl-token " ]] || [[ " ${missing_deps[*]} " =~ " spl-associated-token-account " ]]; then
+            echo "spl"
+            return 0
+        elif [[ " ${missing_deps[*]} " =~ " mpl-token-metadata " ]]; then
+            echo "metaplex"
+            return 0
+        fi
+    fi
+    
+    if [ ${#warnings[@]} -gt 0 ]; then
+        for warning in "${warnings[@]}"; do
+            log_with_timestamp "⚠️ Warning: $warning" "error"
+        done
+    fi
+    
+    if [ ${#missing_deps[@]} -eq 0 ] && [ ${#warnings[@]} -eq 0 ]; then
+        log_with_timestamp "✅ Dependency validation passed"
+    fi
+    
+    echo "$project_type"
+}
+
+# Enhanced dependency fetching with better error handling
+enhanced_fetch_dependencies() {
+    local cargo_toml="$1"
+    local cache_cargo="$2"
+    local contracts_dir="$3"
+    
+    if cargo_toml_changed "$cargo_toml" "$cache_cargo"; then
+        log_with_timestamp "🔄 Cargo.toml changed, fetching new dependencies..."
+        
+        # Try regular fetch first
+        if (cd "$contracts_dir" && cargo fetch 2>&1 | tee -a "$LOG_FILE"); then
+            log_with_timestamp "✅ Dependencies fetched successfully"
+            cp "$cargo_toml" "$cache_cargo"
+            return 0
+        fi
+        
+        # If fetch fails, try to update the registry
+        log_with_timestamp "⚠️ Dependency fetch failed, trying registry update..." "error"
+        if (cd "$contracts_dir" && cargo update 2>&1 | tee -a "$LOG_FILE"); then
+            log_with_timestamp "✅ Registry updated, retrying fetch..."
+            if (cd "$contracts_dir" && cargo fetch 2>&1 | tee -a "$LOG_FILE"); then
+                cp "$cargo_toml" "$cache_cargo"
+                return 0
+            fi
+        fi
+        
+        log_with_timestamp "❌ Failed to fetch dependencies" "error"
+        return 1
+    else
+        log_with_timestamp "✅ No change to dependencies, skipping cargo fetch."
+        return 0
+    fi
+}
+
 if [ -f "/app/.env" ]; then
     export $(grep -v '^#' /app/.env | xargs)
     log_with_timestamp "✅ Environment variables loaded from .env"
@@ -565,68 +859,28 @@ while read -r directory events filename; do
             mkdir -p "$contracts_dir/src"
             cp "$FILE_PATH" "$contracts_dir/src/lib.rs"
             log_with_timestamp "📁 Contract copied to $contracts_dir/src/lib.rs"
-            project_type=$(detect_project_type "$contracts_dir/src/lib.rs")
-            log_with_timestamp "🔍 Detected project type: $project_type"
+            initial_project_type=$(detect_project_type "$contracts_dir/src/lib.rs")
+            log_with_timestamp "🔍 Initial project type detected: $initial_project_type"
+            
+            # Validate dependencies and potentially refine project type
+            project_type=$(validate_contract_dependencies "$contracts_dir/src/lib.rs" "$contract_name" "$initial_project_type")
+            if [ "$project_type" != "$initial_project_type" ]; then
+                log_with_timestamp "🔄 Project type refined to: $project_type (was: $initial_project_type)"
+            fi
+            
             create_dynamic_cargo_toml "$contract_name" "$project_type"
             create_test_files "$contract_name" "$project_type"
 
-            # Check and fetch only new dependencies
-            fetch_new_dependencies "$contracts_dir/Cargo.toml" "$CACHE_CARGO_TOML"
+            # Enhanced dependency fetching with better error handling
+            enhanced_fetch_dependencies "$contracts_dir/Cargo.toml" "$CACHE_CARGO_TOML" "$contracts_dir"
 
-            # Build step
-            log_with_timestamp "🔨 Building $contract_name ($project_type)..."
-            case $project_type in
-                "anchor")
-                    cat > "$contracts_dir/Anchor.toml" <<EOF
-[features]
-seed = false
-skip-lint = false
+            # Enhanced build step with multiple fallback strategies
+            build_success=$(attempt_build_with_fallbacks "$contract_name" "$project_type" "$contracts_dir")
 
-[programs.localnet]
-$contract_name = "target/deploy/${contract_name}.so"
-
-[registry]
-url = "https://api.apr.dev"
-
-[provider]
-cluster = "${SOLANA_URL:-http://solana-validator:8899}"
-wallet = "~/.config/solana/id.json"
-
-[scripts]
-test = "cargo test-sbf"
-
-[test]
-startup_wait = 5000
-shutdown_wait = 2000
-upgrade_wait = 1000
-EOF
-                    (cd "$contracts_dir" && anchor build 2>&1 | tee -a "$LOG_FILE")
-                    if [ $? -eq 0 ]; then
-                        (cd "$contracts_dir" && anchor test --skip-local-validator | tee -a "$LOG_FILE")
-                        log_with_timestamp "✅ Anchor build & tests successful"
-                    else
-                        log_with_timestamp "❌ Anchor build failed, trying cargo build..." "error"
-                        (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
-                        if [ $? -eq 0 ]; then
-                            log_with_timestamp "✅ Cargo build successful"
-                            (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
-                        else
-                            log_with_timestamp "❌ All builds failed for $contract_name" "error"
-                            continue
-                        fi
-                    fi
-                    ;;
-                *)
-                    (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
-                    if [ $? -eq 0 ]; then
-                        log_with_timestamp "✅ Build successful"
-                        (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
-                    else
-                        log_with_timestamp "❌ Build failed for $contract_name" "error"
-                        continue
-                    fi
-                    ;;
-            esac
+            # Continue with analysis even if build partially failed
+            if [ "$build_success" = "false" ]; then
+                log_with_timestamp "⚠️ Build failed, but continuing with analysis tools..." "error"
+            fi
 
             # FIXED: Run all analysis tools
             run_security_audit "$contract_name"
@@ -671,66 +925,27 @@ then
                 mkdir -p "$contracts_dir/src"
                 cp "$file" "$contracts_dir/src/lib.rs"
                 log_with_timestamp "📁 Contract copied to $contracts_dir/src/lib.rs"
-                project_type=$(detect_project_type "$contracts_dir/src/lib.rs")
-                log_with_timestamp "🔍 Detected project type: $project_type"
+                initial_project_type=$(detect_project_type "$contracts_dir/src/lib.rs")
+                log_with_timestamp "🔍 Initial project type detected: $initial_project_type"
+                
+                # Validate dependencies and potentially refine project type
+                project_type=$(validate_contract_dependencies "$contracts_dir/src/lib.rs" "$contract_name" "$initial_project_type")
+                if [ "$project_type" != "$initial_project_type" ]; then
+                    log_with_timestamp "🔄 Project type refined to: $project_type (was: $initial_project_type)"
+                fi
+                
                 create_dynamic_cargo_toml "$contract_name" "$project_type"
                 create_test_files "$contract_name" "$project_type"
 
-                fetch_new_dependencies "$contracts_dir/Cargo.toml" "$CACHE_CARGO_TOML"
+                enhanced_fetch_dependencies "$contracts_dir/Cargo.toml" "$CACHE_CARGO_TOML" "$contracts_dir"
 
-                log_with_timestamp "🔨 Building $contract_name ($project_type)..."
-                case $project_type in
-                    "anchor")
-                        cat > "$contracts_dir/Anchor.toml" <<EOF
-[features]
-seed = false
-skip-lint = false
+                # Enhanced build step with multiple fallback strategies
+                build_success=$(attempt_build_with_fallbacks "$contract_name" "$project_type" "$contracts_dir")
 
-[programs.localnet]
-$contract_name = "target/deploy/${contract_name}.so"
-
-[registry]
-url = "https://api.apr.dev"
-
-[provider]
-cluster = "${SOLANA_URL:-http://solana-validator:8899}"
-wallet = "~/.config/solana/id.json"
-
-[scripts]
-test = "cargo test-sbf"
-
-[test]
-startup_wait = 5000
-shutdown_wait = 2000
-upgrade_wait = 1000
-EOF
-                        (cd "$contracts_dir" && anchor build 2>&1 | tee -a "$LOG_FILE")
-                        if [ $? -eq 0 ]; then
-                            (cd "$contracts_dir" && anchor test --skip-local-validator | tee -a "$LOG_FILE")
-                            log_with_timestamp "✅ Anchor build & tests successful"
-                        else
-                            log_with_timestamp "❌ Anchor build failed, trying cargo build..." "error"
-                            (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
-                            if [ $? -eq 0 ]; then
-                                log_with_timestamp "✅ Cargo build successful"
-                                (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
-                            else
-                                log_with_timestamp "❌ All builds failed for $contract_name" "error"
-                                continue
-                            fi
-                        fi
-                        ;;
-                    *)
-                        (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
-                        if [ $? -eq 0 ]; then
-                            log_with_timestamp "✅ Build successful"
-                            (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
-                        else
-                            log_with_timestamp "❌ Build failed for $contract_name" "error"
-                            continue
-                        fi
-                        ;;
-                esac
+                # Continue with analysis even if build partially failed
+                if [ "$build_success" = "false" ]; then
+                    log_with_timestamp "⚠️ Build failed, but continuing with analysis tools..." "error"
+                fi
                 
                 # FIXED: Run all analysis tools
                 run_security_audit "$contract_name"
