@@ -23,16 +23,27 @@ services:
       - smarthub-network
 
   solana-validator:
-    image: solanalabs/solana:v1.18.25
+    image: solanalabs/solana:v1.18.26  # Updated to match container version
     container_name: solana-validator
     command: >
-      solana-test-validator --reset --no-bpf-jit --no-poh-speed-test --quiet
+      solana-test-validator 
+      --reset 
+      --no-bpf-jit 
+      --no-poh-speed-test 
+      --quiet
+      --log
     ports:
       - "8899:8899"
       - "8900:8900"
     volumes:
       - validator_ledger:/root/.local/share/solana
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "solana", "cluster-version", "--url", "http://localhost:8899"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     networks:
       - smarthub-network
 
@@ -47,6 +58,7 @@ services:
       - shared_logs_non_evm:/app/logs
       - target_cache:/app/target
       - sccache_cache:/app/.cache/sccache
+      - cargo_registry:/usr/local/cargo/registry
     tty: true
     stdin_open: true
     restart: unless-stopped
@@ -60,11 +72,13 @@ services:
       - RUSTC_WRAPPER=sccache
       - CARGO_TARGET_DIR=/app/target
       - ANCHOR_WALLET=/root/.config/solana/id.json
-      - SOLANA_VERSION=1.18.25
+      - SOLANA_VERSION=1.18.26  # Updated to match
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}  # Add API key for reports
     env_file:
       - .env
     depends_on:
-      - solana-validator
+      solana-validator:
+        condition: service_healthy
     networks:
       - smarthub-network
 
@@ -160,6 +174,7 @@ volumes:
   target_cache:
   sccache_cache:
   validator_ledger:
+  cargo_registry:  # Added for better caching
 
 networks:
   smarthub-network:
