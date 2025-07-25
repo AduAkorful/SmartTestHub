@@ -8,13 +8,15 @@ RUN apt-get update && \
         npm \
         git \
         build-essential && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --upgrade pip
 
 # Install Node.js dependencies
 COPY scripts/package.json /app/scripts/
