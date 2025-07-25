@@ -7,41 +7,43 @@ RUN apt-get update && \
         nodejs \
         npm \
         git \
+        curl \
+        ca-certificates \
         build-essential && \
-    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Set up working directory
 WORKDIR /app
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --upgrade pip
-
-# Install Node.js dependencies
+# Install npm dependencies first
 COPY scripts/package.json /app/scripts/
 RUN cd /app/scripts && npm install
 
-# Copy application files
-COPY src ./src
-COPY config ./config
-COPY scripts/aggregate-all-logs.js ./scripts/
-COPY entrypoint.sh ./
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Set up permissions and directories
+# Create necessary directories
+RUN mkdir -p /app/input \
+    /app/logs/coverage \
+    /app/logs/reports \
+    /app/logs/benchmarks \
+    /app/logs/security \
+    /app/logs/xray \
+    /app/contracts \
+    /app/tests \
+    /app/scripts
+
+# Copy application files and templates
+COPY scripts/test_template.py /app/scripts/
+COPY scripts/aggregate-all-logs.js /app/scripts/
+COPY entrypoint.sh /app/
+
+# Set permissions
 RUN chmod +x /app/entrypoint.sh && \
-    mkdir -p /app/input /app/logs/coverage /app/logs/reports \
-             /app/logs/security /app/logs/performance
+    chmod -R 777 /app/logs /app/input /app/contracts
 
-# Set environment variables
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app
-ENV LOG_DIR=/app/logs
-ENV WATCH_DIR=/app/input
-
-# Set up a non-root user
-RUN useradd -m -r -s /bin/bash appuser && \
-    chown -R appuser:appuser /app
-USER appuser
+ENV PATH="/app/scripts:${PATH}"
 
 ENTRYPOINT ["/app/entrypoint.sh"]
