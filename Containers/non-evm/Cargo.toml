@@ -12,10 +12,10 @@ categories = ["cryptography::cryptocurrencies"]
 [dependencies]
 anchor-lang = { version = "0.30.1", optional = true }
 anchor-spl = { version = "0.30.1", optional = true }
-solana-program = "1.18.26"               # Updated to match container
-solana-sdk = "1.18.26"                   # Updated to match container
-borsh = "0.10.4"                         # Updated to match warnings
-borsh-derive = "0.10.4"                  # Updated to match warnings
+solana-program = "1.18.26"
+solana-sdk = "1.18.26"
+borsh = "0.10.4"
+borsh-derive = "0.10.4"
 thiserror = "1.0"
 spl-token = { version = "4.0.0", features = ["no-entrypoint"] }
 spl-associated-token-account = { version = "1.1.2", features = ["no-entrypoint"] }
@@ -34,8 +34,8 @@ log = "0.4"
 once_cell = "1.19"
 
 [dev-dependencies]
-solana-program-test = "1.18.26"         # Updated to match container
-solana-banks-client = "1.18.26"         # Updated to match container
+solana-program-test = "1.18.26"
+solana-banks-client = "1.18.26"
 tokio = { version = "1.0", features = ["full"] }
 assert_matches = "1.5"
 proptest = "1.0"
@@ -51,11 +51,6 @@ default = []
 no-entrypoint = []
 anchor = ["anchor-lang", "anchor-spl"]
 test-sbf = []
-
-# Add benchmarks
-[[bench]]
-name = "contract_benchmarks"
-harness = false
 
 [package.metadata.docs.rs]
 all-features = true
