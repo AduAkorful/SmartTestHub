@@ -795,6 +795,12 @@ if command -v inotifywait &> /dev/null; then
                 
                 contract_subdir="/app/contracts/${contract_name}"
                 mkdir -p "$contract_subdir"
+                # Create necessary log directories for this contract
+                mkdir -p "$contract_subdir/logs"
+                mkdir -p "$contract_subdir/logs/benchmarks"
+                mkdir -p "$contract_subdir/logs/coverage" 
+                mkdir -p "$contract_subdir/logs/security"
+                mkdir -p "$contract_subdir/logs/gas"
                 cp "$FILE_PATH" "$contract_subdir/${filename}"
                 
                 # Enhanced contract analysis and test generation
@@ -836,6 +842,15 @@ if command -v inotifywait &> /dev/null; then
                     
                 else
                     log_with_timestamp "❌ Compilation failed for $contract_name" "error"
+                    log_with_timestamp "📋 Compilation error details:" "error"
+                    if [ -f "$contract_subdir/logs/compile.log" ]; then
+                        cat "$contract_subdir/logs/compile.log" | tail -20 | while IFS= read -r line; do
+                            log_with_timestamp "   $line" "error"
+                        done
+                    else
+                        log_with_timestamp "   No compilation log found" "error"
+                    fi
+                    log_with_timestamp "🔍 Checking Hardhat configuration and contract syntax..." "error"
                 fi
                 
                 end_time=$(date +%s)
@@ -896,6 +911,12 @@ else
                 
                 contract_subdir="/app/contracts/${contract_name}"
                 mkdir -p "$contract_subdir"
+                # Create necessary log directories for this contract
+                mkdir -p "$contract_subdir/logs"
+                mkdir -p "$contract_subdir/logs/benchmarks"
+                mkdir -p "$contract_subdir/logs/coverage" 
+                mkdir -p "$contract_subdir/logs/security"
+                mkdir -p "$contract_subdir/logs/gas"
                 cp "$contract_path" "$contract_subdir/${filename}"
                 
                 analyze_contract_features "$contract_subdir/${filename}" "$contract_name"
@@ -917,6 +938,15 @@ else
                     log_with_timestamp "✅ All analysis tools completed"
                 else
                     log_with_timestamp "❌ Compilation failed for $contract_name" "error"
+                    log_with_timestamp "📋 Compilation error details:" "error"
+                    if [ -f "$contract_subdir/logs/compile.log" ]; then
+                        cat "$contract_subdir/logs/compile.log" | tail -20 | while IFS= read -r line; do
+                            log_with_timestamp "   $line" "error"
+                        done
+                    else
+                        log_with_timestamp "   No compilation log found" "error"
+                    fi
+                    log_with_timestamp "🔍 Checking Hardhat configuration and contract syntax..." "error"
                 fi
                 
                 end_time=$(date +%s)
