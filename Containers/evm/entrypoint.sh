@@ -775,19 +775,33 @@ log_with_timestamp "📡 Watching for Solidity contract files in /app/input..."
 
 # Use inotify for real-time file monitoring
 if command -v inotifywait &> /dev/null; then
-    inotifywait -m -e close_write,moved_to,create /app/input --format '%w%f' |
+    inotifywait -m -e close_write,moved_to /app/input --format '%w%f' |
     while read FILE_PATH; do
         if [[ "$FILE_PATH" == *.sol ]]; then
             filename=$(basename "$FILE_PATH")
             contract_name=$(basename "$filename" .sol)
             
-            # Skip if already processing
-            if [ -f "/tmp/processing_${contract_name}.lock" ]; then
+            # Improved lock mechanism to prevent duplicate processing
+            lock_file="/tmp/processing_${contract_name}.lock"
+            
+            # Skip if already processing or recently processed
+            if [ -f "$lock_file" ]; then
+                log_with_timestamp "🔄 Skipping $filename - already processing or recently processed"
                 continue
             fi
             
-            # Create processing lock
-            touch "/tmp/processing_${contract_name}.lock"
+            # Create processing lock with timestamp
+            timestamp="$(date +%s)"
+            echo "$timestamp" > "$lock_file"
+            
+            # Small delay to handle multiple rapid file events
+            sleep 1
+            
+            # Double-check lock is still ours (prevent race conditions)
+            if [ ! -f "$lock_file" ] || [ "$(cat "$lock_file" 2>/dev/null)" != "$timestamp" ]; then
+                log_with_timestamp "🔄 Lock conflict detected for $filename - skipping"
+                continue
+            fi
             
             {
                 start_time=$(date +%s)
@@ -881,7 +895,10 @@ if command -v inotifywait &> /dev/null; then
                 log_with_timestamp "=========================================="
                 
                 # Remove processing lock
-                rm -f "/tmp/processing_${contract_name}.lock"
+                rm -f "$lock_file"
+                
+                # Clean up any old locks (older than 10 minutes)
+                find /tmp -name "processing_*.lock" -type f -mmin +10 -delete 2>/dev/null || true
                 
             } 2>&1 | tee -a "$LOG_FILE"
         fi
@@ -890,23 +907,25 @@ else
     # Fallback to polling if inotify not available
     log_with_timestamp "⚠️ inotifywait not available, using polling mode"
     while true; do
-        for contract_path in /app/input/*.sol; do
-            [ ! -f "$contract_path" ] && continue
-            
-            filename=$(basename "$contract_path")
+        for FILE_PATH in /app/input/*.sol; do
+            [ -e "$FILE_PATH" ] || continue
+            filename=$(basename "$FILE_PATH")
             contract_name=$(basename "$filename" .sol)
             
-            # Skip if already processed
-            if [ -f "/tmp/processed_${contract_name}.marker" ]; then
+            # Same lock mechanism for polling mode
+            lock_file="/tmp/processing_${contract_name}.lock"
+            
+            # Skip if already processing
+            if [ -f "$lock_file" ]; then
                 continue
             fi
             
-            # Mark as processed
-            touch "/tmp/processed_${contract_name}.marker"
+            # Create processing lock
+            timestamp="$(date +%s)"
+            echo "$timestamp" > "$lock_file"
             
-            # Same processing logic as above
+            # Process the contract (similar to inotify path)
             {
-                start_time=$(date +%s)
                 log_with_timestamp "🆕 Processing Solidity contract: $filename"
                 
                 contract_subdir="/app/contracts/${contract_name}"
@@ -959,6 +978,9 @@ else
                 else
                     log_with_timestamp "❌ AI-enhanced aggregation failed" "error"
                 fi
+                
+                # Clean up the lock
+                rm -f "$lock_file"
                 
             } 2>&1 | tee -a "$LOG_FILE"
         done
