@@ -25,10 +25,11 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && node --version \
     && npm --version
 
-# Create a Python virtual environment and install Slither
+# Create a Python virtual environment and install security tools
 RUN python3 -m venv /opt/venv && \
     . /opt/venv/bin/activate && \
-    pip install slither-analyzer && \
+    pip install --upgrade pip && \
+    pip install slither-analyzer mythril && \
     echo 'source /opt/venv/bin/activate' >> /root/.bashrc
 
 # Add virtual environment to PATH

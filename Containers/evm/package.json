@@ -1,12 +1,17 @@
 {
   "name": "evm-tools",
   "version": "1.0.0",
-  "description": "EVM tools environment with Hardhat, Foundry, Slither, Gas Reporter etc.",
+  "description": "Enhanced EVM tools environment with comprehensive testing and security analysis",
   "scripts": {
-    "test": "hardhat test --config ./config/hardhat.config.js",
-    "coverage": "hardhat coverage --config ./config/hardhat.config.js",
-    "compile": "hardhat compile --config ./config/hardhat.config.js",
+    "test": "hardhat test --config ./hardhat.config.js",
+    "test:security": "hardhat test test/*.security.test.js",
+    "test:integration": "hardhat test test/*.integration.test.js",
+    "coverage": "hardhat coverage --config ./hardhat.config.js",
+    "compile": "hardhat compile --config ./hardhat.config.js",
+    "compile:parallel": "hardhat compile --parallel --config ./hardhat.config.js",
     "lint": "eslint .",
+    "security:slither": "slither .",
+    "security:mythril": "myth analyze",
     "start": "bash ./entrypoint.sh"
   },
   "devDependencies": {
@@ -15,15 +20,22 @@
     "@nomiclabs/hardhat-waffle": "^2.0.6",
     "@nomiclabs/hardhat-ethers": "^2.0.6",
     "@nomiclabs/hardhat-etherscan": "^3.0.7",
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.10",
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.6",
     "hardhat-gas-reporter": "^1.0.10",
     "hardhat-contract-sizer": "^2.10.0",
     "solidity-coverage": "^0.8.5",
     "chai": "^4.4.1",
     "@openzeppelin/test-helpers": "^0.5.16",
-    "@openzeppelin/contracts": "^5.0.2"
+    "@openzeppelin/contracts": "^5.0.2",
+    "@openzeppelin/contracts-upgradeable": "^5.0.2",
+    "hardhat-deploy": "^0.12.4",
+    "hardhat-storage-layout": "^0.1.7"
   },
   "dependencies": {
     "ethers": "^5.7.2",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "axios": "^1.6.8",
+    "xml2js": "^0.6.2"
   }
 }

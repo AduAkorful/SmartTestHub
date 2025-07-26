@@ -13,7 +13,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
-const outputFile = `/app/logs/reports/${contractName}-report.md`;
+const outputFile = `/app/logs/reports/${contractName}-report.txt`;
 
 function tryRead(file, fallback = '') {
   try {
@@ -110,7 +110,7 @@ async function enhanceReport() {
     console.log(`AI-enhanced report written to ${outputFile}`);
   } catch (err) {
     console.error("AI enhancement failed, writing raw logs instead.", err?.message || err);
-    fs.writeFileSync(outputFile, fullLog + "\n\n---\n\n# AI enhancement failed.\n");
+    fs.writeFileSync(outputFile, fullLog + "\n\n=====================================\n\nAI enhancement failed.\n");
   }
 }
 

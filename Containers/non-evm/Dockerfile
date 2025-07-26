@@ -53,8 +53,7 @@ COPY Cargo.toml ./
 # If Cargo.lock exists, use it; else, generate it on the fly
 RUN mkdir -p src && echo "pub fn dummy() {}" > src/lib.rs && \
     test -f Cargo.lock || cargo generate-lockfile && \
-    cargo fetch && \
-    SCCACHE_CACHE_SIZE=2G SCCACHE_DIR=/app/.cache/sccache RUSTC_WRAPPER=sccache cargo build --release || true
+    cargo fetch || true
 
 # Copy the rest of the source and scripts
 COPY src ./src
