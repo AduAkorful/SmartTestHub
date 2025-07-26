@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.9-slim
 
 # Install system dependencies and security tools
 RUN apt-get update && \
@@ -24,10 +24,21 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Install Python dependencies first for better caching
+# Install Python dependencies with fallback strategy for Cairo
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir --timeout 600 -r requirements.txt || \
+    (echo "Retrying with individual packages..." && \
+     pip install --no-cache-dir starknet-py==0.20.0 && \
+     pip install --no-cache-dir "cairo-lang>=0.13.0,<0.14.0" && \
+     pip install --no-cache-dir pytest pytest-cov pytest-xdist pytest-mock && \
+     pip install --no-cache-dir coverage bandit safety pip-audit && \
+     pip install --no-cache-dir memory-profiler line-profiler psutil && \
+     pip install --no-cache-dir flake8 black mypy pylint autopep8 && \
+     pip install --no-cache-dir colorlog rich structlog && \
+     pip install --no-cache-dir ipython ipdb click python-dotenv pyyaml && \
+     pip install --no-cache-dir requests aiohttp pandas numpy && \
+     pip install --no-cache-dir cryptography pycryptodome web3 eth-utils)
 
 # Install npm dependencies
 COPY scripts/package.json /app/scripts/
