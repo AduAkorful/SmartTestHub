@@ -108,7 +108,7 @@ run_performance_analysis() {
     mkdir -p "$contracts_dir/benches"
     local bench_log="/app/logs/benchmarks/${contract_name}-benchmarks.log"
     
-    # Create a simple benchmark test
+    # Update benchmark test with contract-specific implementation
     cat > "$contracts_dir/benches/benchmark.rs" <<EOF
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ${contract_name}::*;
@@ -523,6 +523,24 @@ overflow-checks = true
 lto = "fat"
 codegen-units = 1
 EOF
+
+    # Create benchmark directory and file to prevent Cargo.toml parsing errors
+    mkdir -p "$contracts_dir/benches"
+    cat > "$contracts_dir/benches/benchmark.rs" <<EOF
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+
+fn benchmark_basic_operation(c: &mut Criterion) {
+    c.bench_function("basic_operation", |b| {
+        b.iter(|| {
+            // Basic benchmark placeholder
+            black_box(42)
+        })
+    });
+}
+
+criterion_group!(benches, benchmark_basic_operation);
+criterion_main!(benches);
+EOF
 }
 
 create_test_files() {
@@ -730,8 +748,6 @@ validate_contract_dependencies() {
     local contract_name="$2"
     local project_type="$3"
     
-    log_with_timestamp "🔍 Validating dependencies for $contract_name..."
-    
     local content=$(cat "$file_path")
     local missing_deps=()
     local warnings=()
@@ -763,7 +779,7 @@ validate_contract_dependencies() {
         warnings+=("Unsafe code detected - may cause security issues")
     fi
     
-    # Log findings
+    # Log findings (only once per validation)
     if [ ${#missing_deps[@]} -gt 0 ]; then
         log_with_timestamp "⚠️ Missing dependencies detected: ${missing_deps[*]}" "error"
         # Auto-add missing dependencies to project type detection
@@ -780,10 +796,6 @@ validate_contract_dependencies() {
         for warning in "${warnings[@]}"; do
             log_with_timestamp "⚠️ Warning: $warning" "error"
         done
-    fi
-    
-    if [ ${#missing_deps[@]} -eq 0 ] && [ ${#warnings[@]} -eq 0 ]; then
-        log_with_timestamp "✅ Dependency validation passed"
     fi
     
     echo "$project_type"
@@ -863,9 +875,12 @@ while read -r directory events filename; do
             log_with_timestamp "🔍 Initial project type detected: $initial_project_type"
             
             # Validate dependencies and potentially refine project type
+            log_with_timestamp "🔍 Validating dependencies for $contract_name..."
             project_type=$(validate_contract_dependencies "$contracts_dir/src/lib.rs" "$contract_name" "$initial_project_type")
             if [ "$project_type" != "$initial_project_type" ]; then
                 log_with_timestamp "🔄 Project type refined to: $project_type (was: $initial_project_type)"
+            else
+                log_with_timestamp "✅ Dependency validation passed"
             fi
             
             create_dynamic_cargo_toml "$contract_name" "$project_type"
@@ -875,11 +890,14 @@ while read -r directory events filename; do
             enhanced_fetch_dependencies "$contracts_dir/Cargo.toml" "$CACHE_CARGO_TOML" "$contracts_dir"
 
             # Enhanced build step with multiple fallback strategies
+            log_with_timestamp "🔨 Starting enhanced build process for $contract_name..."
             build_success=$(attempt_build_with_fallbacks "$contract_name" "$project_type" "$contracts_dir")
 
             # Continue with analysis even if build partially failed
             if [ "$build_success" = "false" ]; then
                 log_with_timestamp "⚠️ Build failed, but continuing with analysis tools..." "error"
+            else
+                log_with_timestamp "✅ Enhanced build process completed successfully"
             fi
 
             # FIXED: Run all analysis tools
@@ -929,9 +947,12 @@ then
                 log_with_timestamp "🔍 Initial project type detected: $initial_project_type"
                 
                 # Validate dependencies and potentially refine project type
+                log_with_timestamp "🔍 Validating dependencies for $contract_name..."
                 project_type=$(validate_contract_dependencies "$contracts_dir/src/lib.rs" "$contract_name" "$initial_project_type")
                 if [ "$project_type" != "$initial_project_type" ]; then
                     log_with_timestamp "🔄 Project type refined to: $project_type (was: $initial_project_type)"
+                else
+                    log_with_timestamp "✅ Dependency validation passed"
                 fi
                 
                 create_dynamic_cargo_toml "$contract_name" "$project_type"
@@ -940,11 +961,14 @@ then
                 enhanced_fetch_dependencies "$contracts_dir/Cargo.toml" "$CACHE_CARGO_TOML" "$contracts_dir"
 
                 # Enhanced build step with multiple fallback strategies
+                log_with_timestamp "🔨 Starting enhanced build process for $contract_name..."
                 build_success=$(attempt_build_with_fallbacks "$contract_name" "$project_type" "$contracts_dir")
 
                 # Continue with analysis even if build partially failed
                 if [ "$build_success" = "false" ]; then
                     log_with_timestamp "⚠️ Build failed, but continuing with analysis tools..." "error"
+                else
+                    log_with_timestamp "✅ Enhanced build process completed successfully"
                 fi
                 
                 # FIXED: Run all analysis tools
