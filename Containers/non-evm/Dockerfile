@@ -20,8 +20,11 @@ RUN apt-get update && \
       wget && \
     rm -rf /var/lib/apt/lists/*
 
-# Install sccache for Rust build caching
-RUN cargo install sccache
+# Install sccache for Rust build caching (use pre-built binary for speed)
+RUN curl -L "https://github.com/mozilla/sccache/releases/download/v0.7.7/sccache-v0.7.7-x86_64-unknown-linux-musl.tar.gz" \
+    | tar -xz -C /tmp && \
+    mv /tmp/sccache-v0.7.7-x86_64-unknown-linux-musl/sccache /usr/local/bin/ && \
+    chmod +x /usr/local/bin/sccache
 
 # Copy and extract Solana CLI (offline install)
 COPY solana-release-x86_64-unknown-linux-gnu.tar.bz2 /tmp/
