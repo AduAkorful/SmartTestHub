@@ -1395,6 +1395,25 @@ process_contract() {
             log_with_timestamp "✅ All parallel analysis tools completed for $CONTRACT_NAME" "success"
         }
         
+        # Consolidate reports to global locations for AI processing
+        log_with_timestamp "📋 Consolidating reports for AI analysis..." "debug"
+        mkdir -p "/app/logs/security" "/app/logs/coverage" "/app/logs/performance"
+        
+        # Copy security reports to global location
+        if [ -d "$CONTRACTS_DIR/logs/security" ]; then
+            cp "$CONTRACTS_DIR/logs/security"/*.log "/app/logs/security/" 2>/dev/null || true
+        fi
+        
+        # Copy coverage reports to global location  
+        if [ -d "$CONTRACTS_DIR/logs/coverage" ]; then
+            cp "$CONTRACTS_DIR/logs/coverage"/* "/app/logs/coverage/" 2>/dev/null || true
+        fi
+        
+        # Copy performance reports to global location
+        if [ -d "$CONTRACTS_DIR/logs/benchmarks" ]; then
+            cp "$CONTRACTS_DIR/logs/benchmarks"/*.log "/app/logs/performance/" 2>/dev/null || true
+        fi
+        
         # Generate report
         if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
             log_with_timestamp "📊 Generating comprehensive report..." "debug"

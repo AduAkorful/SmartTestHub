@@ -43,11 +43,14 @@ function aggregateDir(dir, filter = () => true) {
 
 let fullLog = '';
 fullLog += section('Algorand Container Procedure Log', tryRead('/app/logs/test.log'));
-fullLog += section('PyTest Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.xml') || f.endsWith('.txt')));
-fullLog += section('Coverage Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.xml') || f.endsWith('.html')));
-fullLog += section('Security Analysis', aggregateDir('/app/logs/security', f => f.endsWith('.log')));
+fullLog += section('PyTest Reports', aggregateDir(`/app/logs/reports/${contractName}`, f => f.endsWith('.log') || f.endsWith('.xml') || f.endsWith('.txt')));
+fullLog += section('Enhanced Test Reports', aggregateDir(`/app/contracts/${contractName}/logs/tests`, f => f.endsWith('.log')));
+fullLog += section('Coverage Reports', aggregateDir(`/app/contracts/${contractName}/logs/coverage`, f => f.endsWith('.xml') || f.endsWith('.html') || f.endsWith('.log')));
+fullLog += section('Security Analysis', aggregateDir(`/app/contracts/${contractName}/logs/security`, f => f.endsWith('.log')));
+fullLog += section('Performance Metrics', aggregateDir(`/app/contracts/${contractName}/logs/benchmarks`, f => f.endsWith('.log')));
 fullLog += section('TEAL Analysis', tryRead(`/app/logs/${contractName}-teal.log`));
-fullLog += section('Performance Metrics', aggregateDir('/app/logs/performance'));
+fullLog += section('Global Coverage Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.xml') || f.endsWith('.html')));
+fullLog += section('Global Security Analysis', aggregateDir('/app/logs/security', f => f.endsWith('.log')));
 fullLog += section('AI Summaries and Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
 fullLog += section('Other Logs', aggregateDir('/app/logs', f => f.endsWith('.log') && !f.includes('test.log')));
 
