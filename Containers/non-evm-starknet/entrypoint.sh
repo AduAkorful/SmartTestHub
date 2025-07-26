@@ -245,7 +245,9 @@ run_starknet_custom_security_checks() {
         
         echo "=== Gas Optimization Security ==="
         echo "INFO: Checking for potential gas exhaustion patterns..."
-        local loop_count=$(grep -c "loop\|while\|for" "$contract_file" 2>/dev/null || echo 0)
+        local loop_count=$(grep -c "loop\|while\|for" "$contract_file" 2>/dev/null | head -1 || echo "0")
+        loop_count=${loop_count:-0}
+        
         if [ "$loop_count" -gt 3 ]; then
             echo "WARNING: High number of loops detected ($loop_count) - DoS risk"
         fi
@@ -355,10 +357,15 @@ run_starknet_performance_analysis() {
         echo "=== Estimated Resource Usage ==="
         echo "Note: These are rough estimates for Starknet operations"
         
-        # Count various operations that affect cost
-        local storage_ops=$(grep -c "storage_var\|storage_read\|storage_write" "$contracts_dir/src/contract.cairo" 2>/dev/null || echo 0)
-        local external_ops=$(grep -c "@external\|#\[external" "$contracts_dir/src/contract.cairo" 2>/dev/null || echo 0)
-        local l1_ops=$(grep -c "send_message_to_l1\|consume_message_from_l1" "$contracts_dir/src/contract.cairo" 2>/dev/null || echo 0)
+        # Count various operations that affect performance
+        local storage_ops=$(grep -c "storage_var\|storage_read\|storage_write" "$contracts_dir/src/contract.cairo" 2>/dev/null | head -1 || echo "0")
+        local external_ops=$(grep -c "@external\|#\[external" "$contracts_dir/src/contract.cairo" 2>/dev/null | head -1 || echo "0")
+        local l1_ops=$(grep -c "send_message_to_l1\|consume_message_from_l1" "$contracts_dir/src/contract.cairo" 2>/dev/null | head -1 || echo "0")
+        
+        # Ensure we have valid numbers
+        storage_ops=${storage_ops:-0}
+        external_ops=${external_ops:-0}
+        l1_ops=${l1_ops:-0}
         
         echo "Storage operations: $storage_ops"
         echo "External functions: $external_ops"
@@ -506,7 +513,7 @@ while read -r directory events filename; do
             
             # Generate original tests (for backward compatibility)
             if [ -f "/app/scripts/generate_starknet_tests.py" ]; then
-                python3 /app/scripts/generate_starknet_tests.py "$CONTRACTS_DIR/src/contract.cairo" "$CONTRACTS_DIR/tests/test_${CONTRACT_NAME}.py"
+            python3 /app/scripts/generate_starknet_tests.py "$CONTRACTS_DIR/src/contract.cairo" "$CONTRACTS_DIR/tests/test_${CONTRACT_NAME}.py"
                 log_with_timestamp "🧪 Generated original tests for backward compatibility" "debug"
             fi
 
@@ -595,7 +602,7 @@ then
                 
                 # Generate original tests (for backward compatibility)
                 if [ -f "/app/scripts/generate_starknet_tests.py" ]; then
-                    python3 /app/scripts/generate_starknet_tests.py "$CONTRACTS_DIR/src/contract.cairo" "$CONTRACTS_DIR/tests/test_${CONTRACT_NAME}.py"
+                python3 /app/scripts/generate_starknet_tests.py "$CONTRACTS_DIR/src/contract.cairo" "$CONTRACTS_DIR/tests/test_${CONTRACT_NAME}.py"
                     log_with_timestamp "🧪 Generated original tests for backward compatibility" "debug"
                 fi
 

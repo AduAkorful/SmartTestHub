@@ -639,7 +639,7 @@ generate_native_tests() {
     local has_arithmetic="$8"
     local has_checked_math="$9"
     
-    cat > "$contracts_dir/tests/test_${contract_name}.rs" <<EOF
+            cat > "$contracts_dir/tests/test_${contract_name}.rs" <<EOF
 use solana_program_test::*;
 use solana_sdk::{
     account::Account,
@@ -977,7 +977,7 @@ generate_anchor_tests() {
     local has_reset="$5"
     local has_owner="$6"
     
-    cat > "$contracts_dir/tests/test_${contract_name}.rs" <<EOF
+            cat > "$contracts_dir/tests/test_${contract_name}.rs" <<EOF
 use anchor_lang::prelude::*;
 use solana_program_test::*;
 use solana_sdk::{signature::{Keypair, Signer}, transaction::Transaction};
@@ -1101,7 +1101,7 @@ EOF
 generate_generic_tests() {
     local contract_name="$1"
     
-    cat > "$contracts_dir/tests/test_${contract_name}.rs" <<EOF
+            cat > "$contracts_dir/tests/test_${contract_name}.rs" <<EOF
 use solana_program_test::*;
 use solana_sdk::{signature::{Keypair, Signer}, transaction::Transaction, pubkey::Pubkey};
 use ${contract_name}::*;

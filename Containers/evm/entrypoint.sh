@@ -629,7 +629,7 @@ EOF
             // Test event emissions
         });
 EOF
-    fi
+      fi
 
     # Add security tests
     cat >> "$contract_subdir/test/${contract_name}.test.js" <<EOF
@@ -892,8 +892,8 @@ if command -v inotifywait &> /dev/null; then
                 export LOG_FILE="$ORIGINAL_LOG_FILE"
                 rm -f "$AI_CLEAN_LOG"
                 
-                log_with_timestamp "=========================================="
-                
+      log_with_timestamp "=========================================="
+
                 # Remove processing lock
                 rm -f "$lock_file"
                 
