@@ -958,8 +958,10 @@ run_algorand_custom_security_checks() {
         echo "=== Algorand Virtual Machine (AVM) Limits ==="
         echo "INFO: Checking for potential AVM limit violations..."
         
-        # Check for potential computation limit issues
-        local loop_count=$(grep -c "For\|While\|Loop" "$contract_file" 2>/dev/null || echo 0)
+        # Check for potential computation limit issues (fix syntax error)
+        local loop_count=$(grep -c "For\|While\|Loop" "$contract_file" 2>/dev/null | head -1 || echo "0")
+        loop_count=${loop_count:-0}
+        
         if [ "$loop_count" -gt 5 ]; then
             echo "WARNING: High number of loops detected ($loop_count) - may hit computation limits"
         fi
@@ -1118,10 +1120,15 @@ run_algorand_performance_analysis() {
         echo "=== Estimated Resource Usage ==="
         echo "Note: These are rough estimates - actual costs depend on execution path"
         
-        # Count various operations that affect cost
-        local state_ops=$(grep -c "globalGet\|globalPut\|localGet\|localPut" "$contracts_dir/src/contract.py" 2>/dev/null || echo 0)
-        local crypto_ops=$(grep -c "Sha256\|Keccak256\|Ed25519Verify" "$contracts_dir/src/contract.py" 2>/dev/null || echo 0)
-        local app_calls=$(grep -c "ApplicationCallTxn\|OnCall" "$contracts_dir/src/contract.py" 2>/dev/null || echo 0)
+        # Count various operations that affect cost (fix syntax error by ensuring clean numeric output)
+        local state_ops=$(grep -c "globalGet\|globalPut\|localGet\|localPut" "$contracts_dir/src/contract.py" 2>/dev/null | head -1 || echo "0")
+        local crypto_ops=$(grep -c "Sha256\|Keccak256\|Ed25519Verify" "$contracts_dir/src/contract.py" 2>/dev/null | head -1 || echo "0")
+        local app_calls=$(grep -c "ApplicationCallTxn\|OnCall" "$contracts_dir/src/contract.py" 2>/dev/null | head -1 || echo "0")
+        
+        # Ensure we have valid numbers
+        state_ops=${state_ops:-0}
+        crypto_ops=${crypto_ops:-0}
+        app_calls=${app_calls:-0}
         
         echo "State operations: $state_ops"
         echo "Cryptographic operations: $crypto_ops"
@@ -1393,7 +1400,7 @@ process_contract() {
             log_with_timestamp "📊 Generating comprehensive report..." "debug"
             
             # Create a clean log file for AI processing (exclude verbose build logs)
-            AI_CLEAN_LOG="/app/logs/ai-clean-${CONTRACT_NAME}.log"
+            AI_CLEAN_LOG="/app/logs/ai-clean-${contract_name}.log"
             
             # Copy only important log entries (exclude verbose build/test output)
             grep -E "(🔧|🧪|🔍|✅|❌|⚠️|🛡️|⚡|📊|🏁)" "$LOG_FILE" > "$AI_CLEAN_LOG" 2>/dev/null || touch "$AI_CLEAN_LOG"
@@ -1402,8 +1409,8 @@ process_contract() {
             ORIGINAL_LOG_FILE="$LOG_FILE"
             export LOG_FILE="$AI_CLEAN_LOG"
             
-            if node /app/scripts/aggregate-all-logs.js "$CONTRACT_NAME" 2>/dev/null; then
-                log_with_timestamp "✅ Report generated: /app/logs/reports/${CONTRACT_NAME}-report.txt" "success"
+            if node /app/scripts/aggregate-all-logs.js "$contract_name" 2>/dev/null; then
+                log_with_timestamp "✅ Report generated: /app/logs/reports/${contract_name}-report.txt" "success"
             else
                 log_with_timestamp "❌ Failed to generate report" "error"
             fi
@@ -1426,18 +1433,18 @@ process_contract() {
             \"duration\": $duration,
             \"status\": \"completed\",
             \"test_summary\": {
-                \"unit_tests\": $(grep -c "PASSED" "/app/logs/reports/${CONTRACT_NAME}/unittest.log" || echo 0),
-                \"integration_tests\": $(grep -c "PASSED" "/app/logs/reports/${CONTRACT_NAME}/integration.log" || echo 0),
-                \"performance_tests\": $(grep -c "PASSED" "/app/logs/reports/${CONTRACT_NAME}/performance.log" || echo 0)
+                \"unit_tests\": $(grep -c "PASSED" "/app/logs/reports/${contract_name}/unittest.log" 2>/dev/null || echo "0"),
+                \"integration_tests\": $(grep -c "PASSED" "/app/logs/reports/${contract_name}/integration.log" 2>/dev/null || echo "0"),
+                \"performance_tests\": $(grep -c "PASSED" "/app/logs/reports/${contract_name}/performance.log" 2>/dev/null || echo "0")
             },
             \"system_metrics\": {
-                \"cpu_usage\": $(top -bn1 | grep "Cpu(s)" | awk '{print $2}'),
-                \"memory_used\": $(free -m | awk '/Mem:/ {print $3}'),
-                \"disk_usage\": $(df -h /app | awk 'NR==2 {print $5}' | sed 's/%//')
+                \"cpu_usage\": $(top -bn1 | grep "Cpu(s)" | awk '{print $2}' 2>/dev/null || echo "\"0%\""),
+                \"memory_used\": $(free -m | awk '/Mem:/ {print $3}' 2>/dev/null || echo "0"),
+                \"disk_usage\": $(df -h /app | awk 'NR==2 {print $5}' | sed 's/%//' 2>/dev/null || echo "0")
             }
-        }" > "/app/logs/metrics/${CONTRACT_NAME}-execution-metrics.json"
+        }" > "/app/logs/metrics/${contract_name}-execution-metrics.json"
         
-    } 2>&1 | tee -a "/app/logs/debug/${CONTRACT_NAME}-processing.log"
+    } 2>&1 | tee -a "/app/logs/debug/${contract_name}-processing.log"
 }
 
 # Primary monitoring using inotifywait with enhanced error handling
