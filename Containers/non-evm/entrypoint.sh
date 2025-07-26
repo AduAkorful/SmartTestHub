@@ -1462,28 +1462,50 @@ while read -r directory events filename; do
             # FIXED: Run all analysis tools in parallel for faster processing
             log_with_timestamp "🔍 Starting parallel analysis tools..."
             {
+                log_with_timestamp "🛡️ Starting security audit..."
                 run_security_audit "$contract_name" &
                 SECURITY_PID=$!
                 
+                log_with_timestamp "📊 Starting coverage analysis..."
                 run_coverage_analysis "$contract_name" &
                 COVERAGE_PID=$!
                 
+                log_with_timestamp "⚡ Starting performance analysis..."
                 run_performance_analysis "$contract_name" &
                 PERFORMANCE_PID=$!
                 
-                # Wait for all analysis tools to complete
-                wait $SECURITY_PID
-                wait $COVERAGE_PID  
-                wait $PERFORMANCE_PID
+                # Wait for all analysis tools to complete with timeout
+                log_with_timestamp "⏳ Waiting for security audit to complete..."
+                if ! wait $SECURITY_PID; then
+                    log_with_timestamp "⚠️ Security audit completed with errors" "error"
+                else
+                    log_with_timestamp "✅ Security audit completed successfully"
+                fi
+                
+                log_with_timestamp "⏳ Waiting for coverage analysis to complete..."
+                if ! wait $COVERAGE_PID; then
+                    log_with_timestamp "⚠️ Coverage analysis completed with errors" "error"
+                else
+                    log_with_timestamp "✅ Coverage analysis completed successfully"
+                fi
+                
+                log_with_timestamp "⏳ Waiting for performance analysis to complete..."
+                if ! wait $PERFORMANCE_PID; then
+                    log_with_timestamp "⚠️ Performance analysis completed with errors" "error"
+                else
+                    log_with_timestamp "✅ Performance analysis completed successfully"
+                fi
                 
                 log_with_timestamp "✅ All parallel analysis tools completed"
             }
             
             end_time=$(date +%s)
+            log_with_timestamp "📝 Generating comprehensive report..."
             generate_comprehensive_report "$contract_name" "$project_type" "$start_time" "$end_time"
             log_with_timestamp "🏁 Completed processing $filename"
             
-            # Aggregate all contract reports into a unified summary
+            # AI Report Generation - Always attempt this with timeout
+            log_with_timestamp "🤖 Starting AI-enhanced report generation..."
             if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
                 # Create a clean log file for AI processing (exclude verbose build logs)
                 AI_CLEAN_LOG="/app/logs/ai-clean-${contract_name}.log"
@@ -1495,12 +1517,27 @@ while read -r directory events filename; do
                 ORIGINAL_LOG_FILE="$LOG_FILE"
                 export LOG_FILE="$AI_CLEAN_LOG"
                 
-                node /app/scripts/aggregate-all-logs.js "$contract_name"
+                log_with_timestamp "🤖 Calling AI aggregation service with timeout..."
+                # Add timeout to prevent hanging
+                if timeout 180 node /app/scripts/aggregate-all-logs.js "$contract_name" 2>&1 | tee -a "$ORIGINAL_LOG_FILE"; then
+                    log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.txt"
+                else
+                    log_with_timestamp "❌ AI report generation failed or timed out, creating basic report" "error"
+                    # Create a basic fallback report
+                    echo "Smart Contract Analysis Report for $contract_name
+Generated: $(date)
+
+Analysis completed but AI enhancement failed or timed out.
+Check individual log files in /app/logs/ for detailed results.
+
+Security Analysis: See /app/logs/security/
+Coverage Analysis: See /app/logs/coverage/
+Performance Analysis: See /app/logs/benchmarks/
+" > "/app/logs/reports/${contract_name}-report.txt"
+                fi
                 
                 # Restore original LOG_FILE
                 export LOG_FILE="$ORIGINAL_LOG_FILE"
-                
-                log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.txt"
                 
                 # Clean up temporary AI log file
                 rm -f "$AI_CLEAN_LOG"
@@ -1508,8 +1545,16 @@ while read -r directory events filename; do
                 # Clean up all files for this contract in /app/contracts/${contract_name} except the report
                 find "$contracts_dir" -type f ! -name "${contract_name}-report.txt" -delete 2>/dev/null || true
                 find "$contracts_dir" -type d -empty -delete 2>/dev/null || true
-                # Also clean up /app/logs/reports except the main report for this contract
                 find "/app/logs/reports" -type f -name "${contract_name}*" ! -name "${contract_name}-report.txt" -delete 2>/dev/null || true
+            else
+                log_with_timestamp "❌ AI aggregation script not found at /app/scripts/aggregate-all-logs.js" "error"
+                # Create a basic fallback report
+                echo "Smart Contract Analysis Report for $contract_name
+Generated: $(date)
+
+AI aggregation script not found.
+Check individual log files in /app/logs/ for detailed results.
+" > "/app/logs/reports/${contract_name}-report.txt"
             fi
             log_with_timestamp "=========================================="
         } 2>&1
@@ -1567,27 +1612,50 @@ then
                 # FIXED: Run all analysis tools in parallel for faster processing
                 log_with_timestamp "🔍 Starting parallel analysis tools..."
                 {
+                    log_with_timestamp "🛡️ Starting security audit..."
                     run_security_audit "$contract_name" &
                     SECURITY_PID=$!
                     
+                    log_with_timestamp "📊 Starting coverage analysis..."
                     run_coverage_analysis "$contract_name" &
                     COVERAGE_PID=$!
                     
+                    log_with_timestamp "⚡ Starting performance analysis..."
                     run_performance_analysis "$contract_name" &
                     PERFORMANCE_PID=$!
                     
-                    # Wait for all analysis tools to complete
-                    wait $SECURITY_PID
-                    wait $COVERAGE_PID  
-                    wait $PERFORMANCE_PID
+                    # Wait for all analysis tools to complete with timeout
+                    log_with_timestamp "⏳ Waiting for security audit to complete..."
+                    if ! wait $SECURITY_PID; then
+                        log_with_timestamp "⚠️ Security audit completed with errors" "error"
+                    else
+                        log_with_timestamp "✅ Security audit completed successfully"
+                    fi
+                    
+                    log_with_timestamp "⏳ Waiting for coverage analysis to complete..."
+                    if ! wait $COVERAGE_PID; then
+                        log_with_timestamp "⚠️ Coverage analysis completed with errors" "error"
+                    else
+                        log_with_timestamp "✅ Coverage analysis completed successfully"
+                    fi
+                    
+                    log_with_timestamp "⏳ Waiting for performance analysis to complete..."
+                    if ! wait $PERFORMANCE_PID; then
+                        log_with_timestamp "⚠️ Performance analysis completed with errors" "error"
+                    else
+                        log_with_timestamp "✅ Performance analysis completed successfully"
+                    fi
                     
                     log_with_timestamp "✅ All parallel analysis tools completed"
                 }
                 
                 end_time=$(date +%s)
+                log_with_timestamp "📝 Generating comprehensive report..."
                 generate_comprehensive_report "$contract_name" "$project_type" "$start_time" "$end_time"
                 log_with_timestamp "🏁 Completed processing $filename"
                 
+                # AI Report Generation - Always attempt this with timeout
+                log_with_timestamp "🤖 Starting AI-enhanced report generation..."
                 if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
                     # Create a clean log file for AI processing (exclude verbose build logs)
                     AI_CLEAN_LOG="/app/logs/ai-clean-${contract_name}.log"
@@ -1599,20 +1667,40 @@ then
                     ORIGINAL_LOG_FILE="$LOG_FILE"
                     export LOG_FILE="$AI_CLEAN_LOG"
                     
-                    node /app/scripts/aggregate-all-logs.js "$contract_name"
+                    log_with_timestamp "🤖 Calling AI aggregation service with timeout..."
+                    # Add timeout to prevent hanging
+                    if timeout 180 node /app/scripts/aggregate-all-logs.js "$contract_name" 2>&1 | tee -a "$ORIGINAL_LOG_FILE"; then
+                        log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.txt"
+                    else
+                        log_with_timestamp "❌ AI report generation failed or timed out, creating basic report" "error"
+                        # Create a basic fallback report
+                        echo "Smart Contract Analysis Report for $contract_name
+Generated: $(date)
+
+Analysis completed but AI enhancement failed or timed out.
+Check individual log files in /app/logs/ for detailed results.
+
+Security Analysis: See /app/logs/security/
+Coverage Analysis: See /app/logs/coverage/
+Performance Analysis: See /app/logs/benchmarks/
+" > "/app/logs/reports/${contract_name}-report.txt"
+                    fi
                     
                     # Restore original LOG_FILE
                     export LOG_FILE="$ORIGINAL_LOG_FILE"
                     
-                    log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.txt"
-                    
                     # Clean up temporary AI log file
                     rm -f "$AI_CLEAN_LOG"
                     
-                    # Clean up all files for this contract in /app/contracts/${contract_name} except the report
-                    find "$contracts_dir" -type f ! -name "${contract_name}-report.txt" -delete 2>/dev/null || true
-                    find "$contracts_dir" -type d -empty -delete 2>/dev/null || true
-                    find "/app/logs/reports" -type f -name "${contract_name}*" ! -name "${contract_name}-report.txt" -delete 2>/dev/null || true
+                else
+                    log_with_timestamp "❌ AI aggregation script not found at /app/scripts/aggregate-all-logs.js" "error"
+                    # Create a basic fallback report
+                    echo "Smart Contract Analysis Report for $contract_name
+Generated: $(date)
+
+AI aggregation script not found.
+Check individual log files in /app/logs/ for detailed results.
+" > "/app/logs/reports/${contract_name}-report.txt"
                 fi
                 log_with_timestamp "=========================================="
             } 2>&1

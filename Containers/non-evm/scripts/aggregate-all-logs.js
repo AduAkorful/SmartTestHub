@@ -9,6 +9,8 @@ if (!contractName) {
   process.exit(1);
 }
 
+console.log(`Starting AI aggregation for contract: ${contractName}`);
+
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
@@ -16,10 +18,14 @@ const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GE
 // CHANGE: output file
 const outputFile = `/app/logs/reports/${contractName}-report.txt`;
 
+console.log(`Output file will be: ${outputFile}`);
+console.log(`GEMINI_API_KEY is ${GEMINI_API_KEY ? 'set' : 'NOT set'}`);
+
 function tryRead(file, fallback = '') {
   try {
     return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : fallback;
   } catch (e) {
+    console.log(`Failed to read ${file}: ${e.message}`);
     return fallback;
   }
 }
