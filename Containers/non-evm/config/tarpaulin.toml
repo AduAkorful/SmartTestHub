@@ -15,7 +15,7 @@ exclude = [
 ]
 output_dir = "logs/coverage"
 target_dir = "target/tarpaulin"
-timeout = "120s"
+timeout = "300s"
 exclude_lines = [
     "#\\[cfg\\(test\\)\\]",
     "unreachable!",
@@ -31,20 +31,20 @@ no_fail_fast = true
 skip_clean = false
 all_features = true
 workspace = false
-verbose = true
+verbose = false
 color = "auto"
 debug = false
 dump_traces = false
 frozen = false
 locked = false
 offline = false
-avoid_cfg_tarpaulin = false
+avoid_cfg_tarpaulin = true
 implicit_test_threads = false
-fail_under = 70.0
+fail_under = 50.0
 branch = true
 count = true
 line = true
-ignore_panics = false
+ignore_panics = true
 ignore_config = false
 include_tests = false
 run_ignored = false

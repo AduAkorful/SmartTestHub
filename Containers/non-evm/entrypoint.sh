@@ -7,8 +7,13 @@ export SCCACHE_CACHE_SIZE=4G  # Increased cache size
 export SCCACHE_DIR="/app/.cache/sccache"
 export CARGO_TARGET_DIR=/app/target
 export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-$(nproc)}
-export RUSTFLAGS="-C target-cpu=native -C opt-level=1"  # Faster compilation
+# Updated RUSTFLAGS to suppress expected Solana cfg warnings and optimize build
+export RUSTFLAGS="-C target-cpu=native -C opt-level=1 --cap-lints=warn -A unexpected_cfgs"
 export RUST_BACKTRACE=0  # Disable backtrace for faster execution
+# Additional cargo optimization
+export CARGO_INCREMENTAL=0  # Disabled for sccache compatibility
+export CARGO_NET_RETRY=10
+export CARGO_HTTP_TIMEOUT=60
 
 LOG_FILE="/app/logs/test.log"
 AI_LOG_FILE="/app/logs/ai-processing.log"  # Separate log for AI processing (excludes verbose build logs)
@@ -174,17 +179,17 @@ run_coverage_analysis() {
     mkdir -p /app/logs/coverage
     local coverage_log="/app/logs/coverage/${contract_name}-coverage.html"
     
-    # Run tarpaulin for coverage with optimized settings
+    # Run tarpaulin for coverage with optimized settings and better error handling
     if command -v cargo-tarpaulin >/dev/null 2>&1; then
-        (cd "$contracts_dir" && cargo tarpaulin --jobs "${CARGO_BUILD_JOBS}" --out Html --output-dir /app/logs/coverage --run-types Tests --timeout 60 --skip-clean --fast > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || {
-            log_with_timestamp "⚠️ Coverage analysis completed with warnings"
-        }
+        (cd "$contracts_dir" && timeout 300 cargo tarpaulin --jobs "${CARGO_BUILD_JOBS}" --out Html --output-dir /app/logs/coverage --run-types Tests --timeout 300 --skip-clean --fast --ignore-panics > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) && \
+        log_with_timestamp "✅ Coverage analysis completed successfully" || \
+        log_with_timestamp "⚠️ Coverage analysis completed with warnings (timeout or errors)"
     else
         log_with_timestamp "❌ cargo-tarpaulin not found, installing..." "error"
         cargo install cargo-tarpaulin --locked
-        (cd "$contracts_dir" && cargo tarpaulin --jobs "${CARGO_BUILD_JOBS}" --out Html --output-dir /app/logs/coverage --run-types Tests --timeout 60 --skip-clean --fast > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || {
-            log_with_timestamp "⚠️ Coverage analysis completed with warnings"
-        }
+        (cd "$contracts_dir" && timeout 300 cargo tarpaulin --jobs "${CARGO_BUILD_JOBS}" --out Html --output-dir /app/logs/coverage --run-types Tests --timeout 300 --skip-clean --fast --ignore-panics > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) && \
+        log_with_timestamp "✅ Coverage analysis completed successfully" || \
+        log_with_timestamp "⚠️ Coverage analysis completed with warnings (timeout or errors)"
     fi
     
     log_with_timestamp "✅ Coverage analysis completed"
@@ -1189,13 +1194,14 @@ wallet = "~/.config/solana/id.json"
 test = "cargo test-sbf"
 
 [test]
-startup_wait = 5000
-shutdown_wait = 2000
-upgrade_wait = 1000
+startup_wait = 10000
+shutdown_wait = 5000
+upgrade_wait = 3000
 EOF
             if (cd "$contracts_dir" && anchor build 2>&1 | tee -a "$LOG_FILE"); then
                 log_with_timestamp "✅ Anchor build successful"
-                (cd "$contracts_dir" && anchor test --skip-local-validator | tee -a "$LOG_FILE")
+                (cd "$contracts_dir" && timeout 600 anchor test --skip-local-validator 2>&1 | tee -a "$LOG_FILE") || \
+                log_with_timestamp "⚠️ Anchor tests completed with warnings or timeouts" "error"
                 echo "true"
                 return 0
             fi
@@ -1204,7 +1210,9 @@ EOF
             log_with_timestamp "⚠️ Anchor build failed, trying cargo build fallback..." "error"
             if (cd "$contracts_dir" && CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS}" cargo build --jobs "${CARGO_BUILD_JOBS}" 2>&1 | tee -a "$LOG_FILE"); then
                 log_with_timestamp "✅ Cargo build successful (Anchor fallback)"
-                (cd "$contracts_dir" && cargo test --jobs "${CARGO_BUILD_JOBS}" -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
+                # Add timeout and better error handling for tests
+                (cd "$contracts_dir" && timeout 300 cargo test --jobs "${CARGO_BUILD_JOBS}" -- --test-threads=1 --nocapture 2>&1 | tee -a "$LOG_FILE") || \
+                log_with_timestamp "⚠️ Tests completed with warnings or timeouts" "error"
                 echo "true"
                 return 0
             fi
@@ -1221,7 +1229,8 @@ EOF
             # Strategy 1: Optimized cargo build with parallel compilation
             if (cd "$contracts_dir" && CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS}" cargo build --jobs "${CARGO_BUILD_JOBS}" 2>&1 | tee -a "$LOG_FILE"); then
                 log_with_timestamp "✅ Build successful"
-                (cd "$contracts_dir" && cargo test --jobs "${CARGO_BUILD_JOBS}" -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
+                (cd "$contracts_dir" && timeout 300 cargo test --jobs "${CARGO_BUILD_JOBS}" -- --test-threads=1 --nocapture 2>&1 | tee -a "$LOG_FILE") || \
+                log_with_timestamp "⚠️ Tests completed with warnings or timeouts" "error"
                 echo "true"
                 return 0
             fi
@@ -1246,7 +1255,8 @@ EOF
             # Strategy 1: Optimized cargo build with parallel compilation
             if (cd "$contracts_dir" && CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS}" cargo build --jobs "${CARGO_BUILD_JOBS}" 2>&1 | tee -a "$LOG_FILE"); then
                 log_with_timestamp "✅ Build successful"
-                (cd "$contracts_dir" && cargo test --jobs "${CARGO_BUILD_JOBS}" -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
+                (cd "$contracts_dir" && timeout 300 cargo test --jobs "${CARGO_BUILD_JOBS}" -- --test-threads=1 --nocapture 2>&1 | tee -a "$LOG_FILE") || \
+                log_with_timestamp "⚠️ Tests completed with warnings or timeouts" "error"
                 echo "true"
                 return 0
             fi

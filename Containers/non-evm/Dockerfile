@@ -78,9 +78,12 @@ RUN mkdir -p /app/logs/coverage \
 
 ENV CARGO_TARGET_DIR=/app/target
 ENV RUSTC_WRAPPER=sccache
-ENV SCCACHE_CACHE_SIZE=2G
+ENV SCCACHE_CACHE_SIZE=4G
 ENV SCCACHE_DIR=/app/.cache/sccache
 ENV CARGO_BUILD_JOBS=4
-ENV RUSTFLAGS="-C target-cpu=native"
+ENV RUSTFLAGS="-C target-cpu=native -C opt-level=1 --cap-lints=warn -A unexpected_cfgs"
+ENV CARGO_INCREMENTAL=0
+ENV CARGO_NET_RETRY=10
+ENV CARGO_HTTP_TIMEOUT=60
 
 ENTRYPOINT ["/app/entrypoint.sh"]
