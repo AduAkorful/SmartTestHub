@@ -1,379 +1,610 @@
 #!/bin/bash
 set -e
 
-# Simple environment setup for Python/Algorand
-export PYTHONUNBUFFERED=1
-export PYTHONDONTWRITEBYTECODE=1
+# Enhanced logging setup with color support
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m'
 
-echo "🚀 Starting Enhanced Algorand Container..."
-echo "📂 Watching for Python contract files..."
+# Test template location
+TEST_TEMPLATE="/app/scripts/test_template.py"
 
-# Create necessary directories
-mkdir -p /app/input
-mkdir -p /app/logs
-mkdir -p /app/contracts
-mkdir -p /app/src
-mkdir -p /app/tests
-
+# Expanded log directory structure
 LOG_FILE="/app/logs/test.log"
-: > "$LOG_FILE"
+ERROR_LOG="/app/logs/error.log"
+SECURITY_LOG="/app/logs/security/security-audit.log"
+PERFORMANCE_LOG="/app/logs/performance/performance.log"
+COVERAGE_LOG="/app/logs/coverage/coverage.log"
+XRAY_LOG="/app/logs/xray/xray.log"
+INTEGRATION_LOG="/app/logs/integration/integration.log"
+METRICS_LOG="/app/logs/metrics/metrics.log"
+DEBUG_LOG="/app/logs/debug/debug.log"
 
-# Simple logging function
+# Create all required directories
+declare -a LOG_DIRS=(
+    "$(dirname "$LOG_FILE")"
+    "$(dirname "$ERROR_LOG")"
+    "$(dirname "$SECURITY_LOG")"
+    "$(dirname "$PERFORMANCE_LOG")"
+    "$(dirname "$COVERAGE_LOG")"
+    "$(dirname "$XRAY_LOG")"
+    "$(dirname "$INTEGRATION_LOG")"
+    "$(dirname "$METRICS_LOG")"
+    "$(dirname "$DEBUG_LOG")"
+    "/app/logs/coverage"
+    "/app/logs/reports"
+    "/app/logs/benchmarks"
+    "/app/logs/security"
+    "/app/logs/xray"
+    "/app/logs/integration"
+    "/app/logs/metrics"
+    "/app/logs/debug"
+    "/app/contracts"
+)
+
+for dir in "${LOG_DIRS[@]}"; do
+    mkdir -p "$dir"
+    chmod 777 "$dir"
+done
+
+# Enhanced logging function with severity levels and colored output
 log_with_timestamp() {
     local message="$1"
-    local timestamp="[$(date '+%Y-%m-%d %H:%M:%S')]"
-    echo "$timestamp $message" | tee -a "$LOG_FILE"
+    local log_type="${2:-info}"
+    local timestamp="[$(date '+%Y-%m-24 %H:%M:%S')]"
+    local color_code=""
+    local icon=""
+    local log_file="$LOG_FILE"
+
+    case $log_type in
+        "error")
+            color_code=$RED
+            icon="❌"
+            log_file="$ERROR_LOG"
+            ;;
+        "security")
+            color_code=$PURPLE
+            icon="🛡️"
+            log_file="$SECURITY_LOG"
+            ;;
+        "performance")
+            color_code=$YELLOW
+            icon="⚡"
+            log_file="$PERFORMANCE_LOG"
+            ;;
+        "coverage")
+            color_code=$BLUE
+            icon="📊"
+            log_file="$COVERAGE_LOG"
+            ;;
+        "xray")
+            color_code=$CYAN
+            icon="📡"
+            log_file="$XRAY_LOG"
+            ;;
+        "success")
+            color_code=$GREEN
+            icon="✅"
+            ;;
+        "warning")
+            color_code=$YELLOW
+            icon="⚠️"
+            ;;
+        "integration")
+            color_code=$BLUE
+            icon="🔄"
+            log_file="$INTEGRATION_LOG"
+            ;;
+        "metrics")
+            color_code=$CYAN
+            icon="📈"
+            log_file="$METRICS_LOG"
+            ;;
+        "debug")
+            color_code=$PURPLE
+            icon="🔍"
+            log_file="$DEBUG_LOG"
+            ;;
+        *)
+            color_code=$NC
+            icon="📝"
+            ;;
+    esac
+
+    echo -e "${color_code}${timestamp} ${icon} ${message}${NC}" | tee -a "$LOG_FILE" "$log_file"
 }
 
-# Generate comprehensive test file
-generate_comprehensive_tests() {
-    local contract_name="$1"
-    local contract_subdir="$2"
+# Enhanced test result handling
+handle_test_result() {
+    local test_output="$1"
+    local test_type="$2"
+    local contract_name="$3"
     
-    log_with_timestamp "🧪 Generating comprehensive test suite for $contract_name..."
-    
-    mkdir -p "$contract_subdir/tests"
-    
-    cat > "$contract_subdir/tests/test_${contract_name}.py" <<EOF
-import pytest
-import sys
-import os
-from pyteal import *
-from algosdk import transaction
-from algosdk.v2client import algod
-
-# Add the contract directory to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-
-def test_contract_import():
-    """Test that the contract can be imported successfully."""
-    try:
-        import ${contract_name}
-        assert True, "Contract imported successfully"
-    except ImportError as e:
-        pytest.fail(f"Failed to import contract: {e}")
-
-def test_pyteal_compilation():
-    """Test PyTeal compilation to TEAL."""
-    try:
-        import ${contract_name}
-        # Try to find a PyTeal program in the contract
-        for attr_name in dir(${contract_name}):
-            attr = getattr(${contract_name}, attr_name)
-            if hasattr(attr, 'teal'):
-                teal_code = compileTeal(attr, Mode.Application)
-                assert len(teal_code) > 0, "TEAL code generated"
-                print(f"TEAL compilation successful for {attr_name}")
-                return
-        print("No PyTeal programs found for compilation test")
-    except Exception as e:
-        pytest.fail(f"PyTeal compilation failed: {e}")
-
-def test_basic_functionality():
-    """Basic functionality test for the contract."""
-    # Add specific tests based on your contract
-    assert True, "Basic test passed"
-
-def test_state_management():
-    """Test Algorand state management patterns."""
-    try:
-        import ${contract_name}
-        # Check for common Algorand state patterns
-        contract_source = open(os.path.join(os.path.dirname(__file__), '..', 'src', '${contract_name}.py')).read()
-        
-        if 'App.globalGet' in contract_source or 'App.localGet' in contract_source:
-            assert True, "State management patterns found"
-        else:
-            print("No explicit state management patterns found")
-    except Exception as e:
-        print(f"State management test warning: {e}")
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
-EOF
-    
-    log_with_timestamp "✅ Comprehensive test suite generated"
+    if echo "$test_output" | grep -q "FAILED"; then
+        log_with_timestamp "❌ ${test_type} tests failed for ${contract_name}" "error"
+        echo "$test_output" >> "$ERROR_LOG"
+        return 1
+    elif echo "$test_output" | grep -q "PASSED"; then
+        log_with_timestamp "✅ ${test_type} tests passed for ${contract_name}" "success"
+        return 0
+    else
+        log_with_timestamp "⚠️ ${test_type} tests had unclear results for ${contract_name}" "warning"
+        echo "$test_output" >> "$ERROR_LOG"
+        return 2
+    fi
 }
 
-# TEAL compilation and analysis
-run_teal_analysis() {
+# Enhanced performance metrics collection
+collect_performance_metrics() {
     local contract_name="$1"
-    local contract_path="$2"
-    local contract_subdir="$3"
+    local contracts_dir="$2"
     
-    log_with_timestamp "🔧 Running TEAL compilation and analysis for $contract_name..."
+    log_with_timestamp "📈 Collecting detailed performance metrics..." "metrics"
     
-    mkdir -p "$contract_subdir/logs/teal"
-    local teal_log="$contract_subdir/logs/teal/${contract_name}-teal.log"
-    
-    {
-        echo "=== TEAL Compilation Analysis ==="
-        echo "Contract: $contract_name"
-        echo "Date: $(date)"
-        echo ""
-        
-        # Try to compile PyTeal to TEAL
-        python3 << EOL
+    # TEAL metrics with enhanced error handling
+    python3 -c "
 import sys
-sys.path.insert(0, '$contract_subdir/src')
+sys.path.append('$contracts_dir/src')
 try:
-    import $contract_name
+    from contract import approval_program
     from pyteal import *
-    
-    print("=== PyTeal Programs Found ===")
-    teal_programs = []
-    
-    for attr_name in dir($contract_name):
-        attr = getattr($contract_name, attr_name)
-        if hasattr(attr, 'teal') or (callable(attr) and not attr_name.startswith('_')):
-            try:
-                if hasattr(attr, 'teal'):
-                    teal_code = compileTeal(attr, Mode.Application)
-                    print(f"✅ Successfully compiled {attr_name} to TEAL")
-                    print(f"   TEAL size: {len(teal_code)} characters")
-                    print(f"   TEAL lines: {len(teal_code.splitlines())} lines")
-                    teal_programs.append((attr_name, teal_code))
-                elif callable(attr):
-                    try:
-                        result = attr()
-                        if hasattr(result, 'teal'):
-                            teal_code = compileTeal(result, Mode.Application)
-                            print(f"✅ Successfully compiled {attr_name}() to TEAL")
-                            print(f"   TEAL size: {len(teal_code)} characters")
-                            print(f"   TEAL lines: {len(teal_code.splitlines())} lines")
-                            teal_programs.append((attr_name, teal_code))
-                    except:
-                        pass
-            except Exception as e:
-                print(f"⚠️ Failed to compile {attr_name}: {e}")
-    
-    if teal_programs:
-        print(f"\\n=== TEAL Analysis Summary ===")
-        print(f"Total programs compiled: {len(teal_programs)}")
-        total_size = sum(len(code) for _, code in teal_programs)
-        print(f"Total TEAL size: {total_size} characters")
-        
-        for name, code in teal_programs:
-            with open('$contract_subdir/logs/teal/{name}-compiled.teal', 'w') as f:
-                f.write(code)
-    else:
-        print("❌ No TEAL programs could be compiled")
-        
+    import json
+    import time
+
+    start_time = time.time()
+    teal = compileTeal(approval_program(), mode=Mode.Application, version=6)
+    compile_time = time.time() - start_time
+
+    metrics = {
+        'teal_size': len(teal.split('\\n')),
+        'opcode_count': len([l for l in teal.split('\\n') if l and not l.startswith(('#', '//'))]),
+        'compilation_time': compile_time,
+        'state_ops': {
+            'global_get': teal.count('app_global_get'),
+            'local_get': teal.count('app_local_get'),
+            'global_put': teal.count('app_global_put'),
+            'local_put': teal.count('app_local_put')
+        },
+        'branching': {
+            'if_statements': teal.count('bz') + teal.count('bnz'),
+            'switches': teal.count('switch')
+        },
+        'timestamp': '$(date '+%Y-%m-%d %H:%M:%S')',
+        'contract': '$contract_name'
+    }
+
+    # Additional analysis for contract complexity
+    metrics['complexity'] = {
+        'scratch_vars': len([l for l in teal.split('\\n') if 'store' in l.lower()]),
+        'inner_transactions': teal.count('itxn_begin'),
+        'asset_operations': sum(teal.count(op) for op in ['asset_holding_get', 'asset_params_get']),
+        'box_operations': sum(teal.count(op) for op in ['box_get', 'box_put', 'box_del']),
+    }
+
+    # Check for potential optimizations
+    metrics['optimization_hints'] = []
+    if metrics['opcode_count'] > 400:
+        metrics['optimization_hints'].append('High opcode count - consider splitting logic')
+    if metrics['state_ops']['global_get'] + metrics['state_ops']['local_get'] > 15:
+        metrics['optimization_hints'].append('High number of state reads - consider caching')
+
+    with open('/app/logs/metrics/${contract_name}-detailed-metrics.json', 'w') as f:
+        json.dump(metrics, f, indent=2)
 except Exception as e:
-    print(f"❌ TEAL compilation failed: {e}")
-EOL
+    error_data = {
+        'error': str(e),
+        'timestamp': '$(date '+%Y-%m-%d %H:%M:%S')',
+        'contract': '$contract_name'
+    }
+    with open('/app/logs/metrics/${contract_name}-error-metrics.json', 'w') as f:
+        json.dump(error_data, f, indent=2)
+    sys.exit(1)
+" 2>/dev/null || {
+        log_with_timestamp "⚠️ Failed to collect TEAL metrics" "error"
+        echo "{
+            \"error\": \"TEAL metrics collection failed\",
+            \"timestamp\": \"$(date '+%Y-%m-%d %H:%M:%S')\",
+            \"contract\": \"$contract_name\"
+        }" > "/app/logs/metrics/${contract_name}-error-metrics.json"
+    }
+
+    # Additional performance metrics
+    {
+        # Memory usage analysis
+        local mem_usage=$(ps -o rss= -p $$)
         
-        echo "=== TEAL Analysis Complete ==="
-    } > "$teal_log" 2>&1
-    
-    log_with_timestamp "✅ TEAL compilation and analysis completed"
+        # Execution time tracking
+        local exec_metrics="{
+            \"memory_usage_kb\": $mem_usage,
+            \"timestamp\": \"$(date '+%Y-%m-%d %H:%M:%S')\",
+            \"contract\": \"$contract_name\"
+        }"
+        echo "$exec_metrics" > "/app/logs/metrics/${contract_name}-execution-metrics.json"
+        
+        # Record system metrics
+        local sys_metrics="{
+            \"cpu_usage\": $(top -bn1 | grep "Cpu(s)" | awk '{print $2}'),
+            \"memory_total\": $(free -m | awk '/Mem:/ {print $2}'),
+            \"memory_used\": $(free -m | awk '/Mem:/ {print $3}'),
+            \"timestamp\": \"$(date '+%Y-%m-%d %H:%M:%S')\",
+            \"contract\": \"$contract_name\"
+        }"
+        echo "$sys_metrics" > "/app/logs/metrics/${contract_name}-system-metrics.json"
+    } 2>/dev/null || log_with_timestamp "⚠️ Failed to collect system metrics" "warning"
 }
 
-# Comprehensive security analysis
-run_comprehensive_security_analysis() {
+# Comprehensive test suite runner with enhanced error handling
+run_comprehensive_tests() {
     local contract_name="$1"
-    local contract_path="$2"
-    local contract_subdir="$3"
+    local contracts_dir="$2"
     
-    log_with_timestamp "🛡️ Running comprehensive security analysis for $contract_name..."
+    log_with_timestamp "🔬 Running comprehensive test suite for $contract_name..."
     
-    mkdir -p "$contract_subdir/logs/security"
+    # Setup test environment
+    export PYTHONPATH="$contracts_dir/src:$PYTHONPATH"
+    export CONTRACT_NAME="$contract_name"
     
-    # Run multiple security tools
-    local bandit_log="$contract_subdir/logs/security/${contract_name}-bandit.log"
-    local flake8_log="$contract_subdir/logs/security/${contract_name}-flake8.log"
-    local mypy_log="$contract_subdir/logs/security/${contract_name}-mypy.log"
-    local basic_log="$contract_subdir/logs/security/${contract_name}-security.log"
+    # Create test result directory
+    local test_results_dir="/app/logs/reports/${contract_name}"
+    mkdir -p "$test_results_dir"
     
-    # Bandit security analysis
-    if command -v bandit &> /dev/null; then
-        bandit -r "$contract_path" -f txt > "$bandit_log" 2>&1 || {
-            log_with_timestamp "⚠️ Bandit found security issues - check $bandit_log"
-        }
+    # Unit Tests with enhanced reporting
+    log_with_timestamp "🧪 Running unit tests..." "debug"
+    if pytest --cov="$contracts_dir/src" \
+             --cov-report=term \
+             --cov-report=xml:"$test_results_dir/coverage.xml" \
+             --cov-report=html:"$test_results_dir/coverage-html" \
+             --junitxml="$test_results_dir/junit.xml" \
+             --timeout=30 \
+             -v "$contracts_dir/tests/" 2>&1 | tee "$test_results_dir/unittest.log"; then
+        log_with_timestamp "✅ Unit tests completed successfully" "success"
+    else
+        log_with_timestamp "⚠️ Unit tests completed with issues" "warning"
     fi
     
-    # Flake8 code quality
-    if command -v flake8 &> /dev/null; then
-        flake8 "$contract_path" > "$flake8_log" 2>&1 || {
-            log_with_timestamp "⚠️ Flake8 found code quality issues - check $flake8_log"
-        }
-    fi
-    
-    # MyPy type checking
-    if command -v mypy &> /dev/null; then
-        mypy "$contract_path" > "$mypy_log" 2>&1 || {
-            log_with_timestamp "⚠️ MyPy found type issues - check $mypy_log"
-        }
-    fi
-    
-    # Basic pattern analysis
-    {
-        echo "=== Basic Python/Algorand Security Analysis ==="
-        echo "Contract: $contract_name"
-        echo "Date: $(date)"
-        echo ""
-        
-        # Basic pattern checks for PyTeal/Algorand
-        if grep -n "eval\|exec\|__import__" "$contract_path"; then
-            echo "WARNING: Dynamic code execution found - review for security"
+    # Integration Tests with timeout and retry
+    log_with_timestamp "🔄 Running integration tests..." "integration"
+    for i in {1..3}; do
+        if CONTRACT_NAME="$contract_name" pytest -m integration \
+                 --junitxml="$test_results_dir/integration.xml" \
+                 "$contracts_dir/tests/" 2>&1 | tee "$test_results_dir/integration.log"; then
+            log_with_timestamp "✅ Integration tests completed successfully" "success"
+            break
         else
-            echo "✅ No dynamic code execution found"
-        fi
-        
-        if grep -n "pyteal\|PyTeal" "$contract_path"; then
-            echo "✅ PyTeal usage detected"
-        fi
-        
-        if grep -n "Global\|Local\|App\.globalGet\|App\.localGet" "$contract_path"; then
-            echo "✅ Algorand state management detected"
-        fi
-        
-        if grep -n "Txn\|Gtxn" "$contract_path"; then
-            echo "✅ Transaction handling detected"
-        fi
-        
-        if grep -n "Assert\|Return" "$contract_path"; then
-            echo "✅ Control flow patterns detected"
-        fi
-        
-        echo "=== Analysis Complete ==="
-    } > "$basic_log"
-    
-    log_with_timestamp "✅ Comprehensive security analysis completed"
-}
-
-# Coverage analysis
-run_coverage_analysis() {
-    local contract_name="$1"
-    local contract_subdir="$2"
-    
-    log_with_timestamp "📊 Running coverage analysis for $contract_name..."
-    
-    mkdir -p "$contract_subdir/logs/coverage"
-    local coverage_log="$contract_subdir/logs/coverage/${contract_name}-coverage.log"
-    
-    # Run tests with coverage
-    if command -v pytest &> /dev/null; then
-        (cd "$contract_subdir" && python3 -m pytest tests/ --cov=src --cov-report=term --cov-report=html:logs/coverage/html > "$coverage_log" 2>&1) || {
-            log_with_timestamp "⚠️ Coverage analysis completed with warnings - check $coverage_log"
-        }
-    fi
-    
-    log_with_timestamp "✅ Coverage analysis completed"
-}
-
-# Performance analysis
-run_performance_analysis() {
-    local contract_name="$1"
-    local contract_subdir="$2"
-    
-    log_with_timestamp "⚡ Running performance analysis for $contract_name..."
-    
-    mkdir -p "$contract_subdir/logs/performance"
-    local perf_log="$contract_subdir/logs/performance/${contract_name}-performance.log"
-    
-    {
-        echo "=== Performance Analysis ==="
-        echo "Contract: $contract_name"
-        echo "Date: $(date)"
-        echo ""
-        
-        # Basic performance metrics
-        echo "=== File Size Analysis ==="
-        file_size=$(stat -c%s "$contract_subdir/src/${contract_name}.py" 2>/dev/null || echo "unknown")
-        echo "Contract file size: $file_size bytes"
-        
-        line_count=$(wc -l < "$contract_subdir/src/${contract_name}.py" 2>/dev/null || echo "unknown")
-        echo "Contract lines of code: $line_count"
-        
-        echo "=== Performance Analysis Complete ==="
-    } > "$perf_log"
-    
-    log_with_timestamp "✅ Performance analysis completed"
-}
-
-log_with_timestamp "📡 Watching for Python contract files in /app/input..."
-
-# Main file monitoring loop
-if command -v inotifywait &> /dev/null; then
-    inotifywait -m -e close_write,moved_to /app/input --format '%w%f' |
-    while read FILE_PATH; do
-        if [[ "$FILE_PATH" == *.py ]]; then
-            filename=$(basename "$FILE_PATH")
-            contract_name=$(basename "$filename" .py)
-            
-            # Simple lock mechanism
-            lock_file="/tmp/processing_${contract_name}.lock"
-            if [ -f "$lock_file" ]; then
-                continue
-            fi
-            echo "$$" > "$lock_file"
-            
-            {
-                start_time=$(date +%s)
-                log_with_timestamp "🆕 Processing Python contract: $filename"
-                
-                contract_subdir="/app/contracts/${contract_name}"
-                mkdir -p "$contract_subdir/src"
-                mkdir -p "$contract_subdir/logs"
-                cp "$FILE_PATH" "$contract_subdir/src/${filename}"
-                
-                # Generate comprehensive tests
-                generate_comprehensive_tests "$contract_name" "$contract_subdir"
-                
-                # Basic syntax check
-                log_with_timestamp "🔍 Checking syntax for $contract_name..."
-                if python3 -m py_compile "$contract_subdir/src/${filename}" 2> "$contract_subdir/logs/syntax.log"; then
-                    log_with_timestamp "✅ Syntax check passed"
-                    
-                    # Run comprehensive analysis
-                    run_teal_analysis "$contract_name" "$contract_subdir/src/${filename}" "$contract_subdir"
-                    run_comprehensive_security_analysis "$contract_name" "$contract_subdir/src/${filename}" "$contract_subdir"
-                    run_performance_analysis "$contract_name" "$contract_subdir"
-                    
-                    # Run tests with coverage
-                    log_with_timestamp "🧪 Running comprehensive tests..."
-                    (cd "$contract_subdir" && python3 -m pytest tests/ -v --tb=short > "$contract_subdir/logs/test.log" 2>&1) || {
-                        log_with_timestamp "⚠️ Some tests may have failed - check logs"
-                    }
-                    
-                    # Run coverage analysis
-                    run_coverage_analysis "$contract_name" "$contract_subdir"
-                    
-                else
-                    log_with_timestamp "❌ Syntax check failed for $contract_name"
-                    if [ -f "$contract_subdir/logs/syntax.log" ]; then
-                        cat "$contract_subdir/logs/syntax.log" | while IFS= read -r line; do
-                            log_with_timestamp "   $line"
-                        done
-                    fi
-                fi
-                
-                end_time=$(date +%s)
-                duration=$((end_time - start_time))
-                log_with_timestamp "🏁 Completed processing $filename in ${duration}s"
-                
-                # Generate AI report if script exists
-                if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
-                    if node /app/scripts/aggregate-all-logs.js "$contract_name" 2>/dev/null; then
-                        log_with_timestamp "✅ Report generated"
-                    fi
-                fi
-                
-                log_with_timestamp "=========================================="
-                rm -f "$lock_file"
-                
-            } 2>&1 | tee -a "$LOG_FILE"
+            log_with_timestamp "⚠️ Integration tests attempt $i failed" "warning"
+            [ $i -eq 3 ] && log_with_timestamp "❌ Integration tests failed after 3 attempts" "error"
+            sleep 5
         fi
     done
-else
-    # Fallback polling mode
-    log_with_timestamp "⚠️ Using polling mode for file monitoring"
+    
+    # Performance Tests with metrics
+    log_with_timestamp "⚡ Running performance tests..." "performance"
+    if CONTRACT_NAME="$contract_name" pytest -m performance \
+             --junitxml="$test_results_dir/performance.xml" \
+             "$contracts_dir/tests/" 2>&1 | tee "$test_results_dir/performance.log"; then
+        log_with_timestamp "✅ Performance tests completed successfully" "success"
+    else
+        log_with_timestamp "⚠️ Performance tests completed with issues" "warning"
+    fi
+    
+    # Collect detailed performance metrics
+    collect_performance_metrics "$contract_name" "$contracts_dir"
+    
+    # Security Analysis with enhanced reporting
+    log_with_timestamp "🛡️ Running comprehensive security analysis..." "security"
+    
+    # Bandit security scan with configuration
+    bandit -r "$contracts_dir/src/" \
+           -f txt \
+           -o "$test_results_dir/bandit.log" \
+           --confidence-level high \
+           --severity-level medium || \
+        log_with_timestamp "⚠️ Bandit security scan completed with issues" "warning"
+    
+    # Static Analysis with detailed reporting
+    log_with_timestamp "🔍 Running static analysis..." "debug"
+    
+    # MyPy type checking with strict mode
+    mypy "$contracts_dir/src/" \
+         --strict \
+         --show-error-codes \
+         --show-error-context \
+         --pretty \
+         > "$test_results_dir/mypy.log" 2>&1 || \
+        log_with_timestamp "⚠️ MyPy type checking completed with issues" "warning"
+    
+    # Flake8 style checking with detailed configuration
+    flake8 "$contracts_dir/src/" \
+           --max-line-length=88 \
+           --extend-ignore=E203 \
+           --statistics \
+           --show-source \
+           > "$test_results_dir/flake8.log" 2>&1 || \
+        log_with_timestamp "⚠️ Flake8 style checking completed with issues" "warning"
+    
+    # Code Formatting check with Black
+    log_with_timestamp "✨ Checking code formatting..." "debug"
+    black "$contracts_dir/src/" \
+          --check \
+          --diff \
+          > "$test_results_dir/black.log" 2>&1 || \
+        log_with_timestamp "⚠️ Black formatting check completed with issues" "warning"
+    
+    # TEAL Analysis with enhanced error handling
+    log_with_timestamp "📝 Analyzing TEAL output..." "debug"
+    if ! python3 -c "
+import sys
+sys.path.append('$contracts_dir/src')
+try:
+    from contract import approval_program
+    from pyteal import *
+    teal = compileTeal(approval_program(), mode=Mode.Application, version=6)
+    print(teal)
+except Exception as e:
+    print(f'Error: {str(e)}', file=sys.stderr)
+    sys.exit(1)
+" > "$test_results_dir/teal.log" 2> "$test_results_dir/teal-error.log"; then
+        log_with_timestamp "❌ TEAL compilation failed" "error"
+        cat "$test_results_dir/teal-error.log" >> "$ERROR_LOG"
+    fi
+    
+    # Generate test summary
+    {
+        echo "Test Summary for $contract_name"
+        echo "================================"
+        echo "Timestamp: $(date '+%Y-%m-24 %H:%M:%S')"
+        echo "Unit Tests: $(grep "failed\|passed" "$test_results_dir/unittest.log" | tail -n1)"
+        echo "Integration Tests: $(grep "failed\|passed" "$test_results_dir/integration.log" | tail -n1)"
+        echo "Performance Tests: $(grep "failed\|passed" "$test_results_dir/performance.log" | tail -n1)"
+        echo "Security Issues: $(grep "Issues Identified" "$test_results_dir/bandit.log" | tail -n1)"
+        echo "Type Issues: $(grep "Found" "$test_results_dir/mypy.log" | tail -n1)"
+        echo "Style Issues: $(grep "summary" "$test_results_dir/flake8.log" | tail -n1)"
+    } > "$test_results_dir/summary.txt"
+}
+
+# Main execution with enhanced watch/polling logic
+watch_dir="/app/input"
+MARKER_DIR="/app/.processed"
+mkdir -p "$watch_dir" "$MARKER_DIR"
+
+log_with_timestamp "🚀 Starting Enhanced Algorand Container v2.0..."
+log_with_timestamp "📡 Watching for PyTeal smart contract files in $watch_dir..."
+log_with_timestamp "👤 Current User: AduAkorful"
+log_with_timestamp "🕒 Start Time: 2025-07-24 19:41:24 UTC"
+
+process_contract() {
+    local file="$1"
+    local filename=$(basename "$file")
+    local MARKER_FILE="$MARKER_DIR/$filename.processed"
+    local CURRENT_HASH=$(sha256sum "$file" | awk '{print $1}')
+    
+    # Check for duplicate processing
+    if [ -f "$MARKER_FILE" ]; then
+        local LAST_HASH=$(cat "$MARKER_FILE")
+        if [ "$CURRENT_HASH" == "$LAST_HASH" ]; then
+            log_with_timestamp "⏭️ Skipping duplicate processing of $filename (same content hash)" "debug"
+            return 0
+        fi
+    fi
+    
+    # Update marker file
+    echo "$CURRENT_HASH" > "$MARKER_FILE"
+    
+    # Process the contract
+    {
+        start_time=$(date +%s)
+        CONTRACT_NAME="${filename%.py}"
+        CONTRACTS_DIR="/app/contracts/${CONTRACT_NAME}"
+        
+        log_with_timestamp "🔨 Setting up contract directory structure..." "debug"
+        mkdir -p "$CONTRACTS_DIR/src" "$CONTRACTS_DIR/tests"
+        
+        # Copy contract and create necessary files
+        cp "$file" "$CONTRACTS_DIR/src/contract.py"
+        touch "$CONTRACTS_DIR/src/__init__.py"
+        touch "$CONTRACTS_DIR/tests/__init__.py"
+        
+        # Copy dynamic test template
+        if [ -f "$TEST_TEMPLATE" ]; then
+            cp "$TEST_TEMPLATE" "$CONTRACTS_DIR/tests/test_contract.py"
+            log_with_timestamp "🧪 Copied dynamic test template for $CONTRACT_NAME" "success"
+        else
+            log_with_timestamp "⚠️ Test template not found at $TEST_TEMPLATE" "error"
+            return 1
+        fi
+        
+        # Export contract name for test environment
+        export CONTRACT_NAME
+        
+        # Run tests and analysis
+        run_comprehensive_tests "$CONTRACT_NAME" "$CONTRACTS_DIR"
+        
+        # Generate report
+        if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
+            log_with_timestamp "📊 Generating comprehensive report..." "debug"
+            if node /app/scripts/aggregate-all-logs.js "$CONTRACT_NAME" 2>/dev/null; then
+                log_with_timestamp "✅ Report generated: /app/logs/reports/${CONTRACT_NAME}-report.md" "success"
+            else
+                log_with_timestamp "❌ Failed to generate report" "error"
+            fi
+        fi
+        
+        # Calculate and log execution time
+        end_time=$(date +%s)
+        duration=$((end_time - start_time))
+        log_with_timestamp "🏁 Completed processing $filename (duration: ${duration}s)" "success"
+        log_with_timestamp "===========================================" "debug"
+        
+        # Record detailed execution metrics
+        echo "{
+            \"contract\": \"$CONTRACT_NAME\",
+            \"timestamp\": \"$(date -u '+%Y-%m-%d %H:%M:%S')\",
+            \"duration\": $duration,
+            \"status\": \"completed\",
+            \"test_summary\": {
+                \"unit_tests\": $(grep -c "PASSED" "/app/logs/reports/${CONTRACT_NAME}/unittest.log" || echo 0),
+                \"integration_tests\": $(grep -c "PASSED" "/app/logs/reports/${CONTRACT_NAME}/integration.log" || echo 0),
+                \"performance_tests\": $(grep -c "PASSED" "/app/logs/reports/${CONTRACT_NAME}/performance.log" || echo 0)
+            },
+            \"system_metrics\": {
+                \"cpu_usage\": $(top -bn1 | grep "Cpu(s)" | awk '{print $2}'),
+                \"memory_used\": $(free -m | awk '/Mem:/ {print $3}'),
+                \"disk_usage\": $(df -h /app | awk 'NR==2 {print $5}' | sed 's/%//')
+            }
+        }" > "/app/logs/metrics/${CONTRACT_NAME}-execution-metrics.json"
+        
+    } 2>&1 | tee -a "/app/logs/debug/${CONTRACT_NAME}-processing.log"
+}
+
+# Primary monitoring using inotifywait with enhanced error handling
+if ! inotifywait -m -e close_write,moved_to,create "$watch_dir" 2>/dev/null |
+    while read -r directory events filename; do
+        if [[ "$filename" =~ \.py$ ]]; then
+            FILE_PATH="$watch_dir/$filename"
+            [ ! -f "$FILE_PATH" ] && continue
+            
+            log_with_timestamp "📥 Detected new/modified file: $filename" "debug"
+            process_contract "$FILE_PATH"
+        fi
+    done
+then
+    # Fallback polling mechanism with enhanced monitoring
+    log_with_timestamp "❌ inotifywait failed, switching to fallback polling mechanism" "warning"
+    
     while true; do
-        for FILE_PATH in /app/input/*.py; do
-            [ -e "$FILE_PATH" ] || continue
-            # Similar processing logic would go here
+        for file in "$watch_dir"/*.py; do
+            [ ! -f "$file" ] && continue
+            
+            log_with_timestamp "🔍 Polling detected file: $(basename "$file")" "debug"
+            process_contract "$file"
         done
+        
+        # Record health check with enhanced metrics
+        echo "{
+            \"timestamp\": \"$(date -u '+%Y-%m-%d %H:%M:%S')\",
+            \"status\": \"polling\",
+            \"last_check\": \"$(date -u '+%Y-%m-%d %H:%M:%S')\",
+            \"system_health\": {
+                \"cpu_usage\": $(top -bn1 | grep "Cpu(s)" | awk '{print $2}'),
+                \"memory_used\": $(free -m | awk '/Mem:/ {print $3}'),
+                \"disk_usage\": $(df -h /app | awk 'NR==2 {print $5}' | sed 's/%//'),
+                \"process_count\": $(ps aux | grep -c "[p]ython")
+            }
+        }" > "/app/logs/metrics/container-health.json"
+        
         sleep 5
     done
 fi
+
+# Error handling for specific signals
+handle_signal() {
+    local signal=$1
+    local pid=$2
+    local timestamp=$(date -u '+%Y-%m-%d %H:%M:%S')
+    
+    log_with_timestamp "⚠️ Received signal $signal" "warning"
+    
+    echo "{
+        \"timestamp\": \"$timestamp\",
+        \"signal\": \"$signal\",
+        \"pid\": $pid,
+        \"status\": \"interrupted\",
+        \"user\": \"AduAkorful\"
+    }" > "/app/logs/metrics/interrupt-state.json"
+    
+    cleanup
+    exit 1
+}
+
+# Enhanced cleanup function
+cleanup() {
+    local exit_code=$?
+    local timestamp=$(date -u '+%Y-%m-%d %H:%M:%S')
+    
+    log_with_timestamp "🛑 Container stopping... Recording final state" "warning"
+    
+    # Save processing state
+    for marker in "$MARKER_DIR"/*.processed; do
+        if [ -f "$marker" ]; then
+            contract_name=$(basename "$marker" .py.processed)
+            if [ -d "/app/contracts/$contract_name" ]; then
+                # Archive contract state
+                tar -czf "/app/logs/archive/${contract_name}-$(date +%s).tar.gz" \
+                    -C "/app/contracts" "$contract_name" 2>/dev/null || true
+            fi
+        fi
+    done
+    
+    # Generate final metrics
+    echo "{
+        \"timestamp\": \"$timestamp\",
+        \"status\": \"stopped\",
+        \"exit_code\": $exit_code,
+        \"user\": \"AduAkorful\",
+        \"uptime\": $SECONDS,
+        \"processed_contracts\": $(find "$MARKER_DIR" -type f | wc -l),
+        \"system_state\": {
+            \"cpu_usage\": $(top -bn1 | grep "Cpu(s)" | awk '{print $2}'),
+            \"memory_used\": $(free -m | awk '/Mem:/ {print $3}'),
+            \"disk_usage\": $(df -h /app | awk 'NR==2 {print $5}' | sed 's/%//'),
+            \"process_count\": $(ps aux | grep -c "[p]ython")
+        },
+        \"error_summary\": {
+            \"total_errors\": $(grep -c "ERROR" "$ERROR_LOG" 2>/dev/null || echo 0),
+            \"last_error\": \"$(tail -n 1 "$ERROR_LOG" 2>/dev/null || echo 'None')\"
+        }
+    }" > "/app/logs/metrics/container-final-state.json"
+    
+    # Generate final report
+    {
+        echo "Container Execution Summary"
+        echo "=========================="
+        echo "Start Time: 2025-07-24 19:42:22 UTC"
+        echo "End Time: $timestamp"
+        echo "User: AduAkorful"
+        echo "Exit Code: $exit_code"
+        echo "Total Runtime: $SECONDS seconds"
+        echo ""
+        echo "Processed Contracts:"
+        find "$MARKER_DIR" -type f -exec basename {} .processed \;
+        echo ""
+        echo "Error Summary:"
+        tail -n 10 "$ERROR_LOG" 2>/dev/null || echo "No errors recorded"
+    } > "/app/logs/reports/final-execution-report.md"
+    
+    # Compress logs
+    log_with_timestamp "📦 Archiving logs..." "debug"
+    tar -czf "/app/logs/archive/logs-$(date +%s).tar.gz" \
+        -C "/app/logs" \
+        --exclude="archive" \
+        . 2>/dev/null || true
+    
+    log_with_timestamp "👋 Container stopped. Final reports available in /app/logs/reports" "success"
+}
+
+# Set up signal handlers
+trap 'handle_signal SIGTERM $$' SIGTERM
+trap 'handle_signal SIGINT $$' SIGINT
+trap 'handle_signal SIGHUP $$' SIGHUP
+trap cleanup EXIT
+
+# Create archive directory
+mkdir -p "/app/logs/archive"
+chmod 777 "/app/logs/archive"
+
+# Record container start state
+echo "{
+    \"timestamp\": \"2025-07-24 19:42:22\",
+    \"status\": \"started\",
+    \"user\": \"AduAkorful\",
+    \"system_state\": {
+        \"cpu_usage\": $(top -bn1 | grep "Cpu(s)" | awk '{print $2}'),
+        \"memory_used\": $(free -m | awk '/Mem:/ {print $3}'),
+        \"disk_usage\": $(df -h /app | awk 'NR==2 {print $5}' | sed 's/%//'),
+        \"process_count\": $(ps aux | grep -c "[p]ython")
+    }
+}" > "/app/logs/metrics/container-start-state.json"

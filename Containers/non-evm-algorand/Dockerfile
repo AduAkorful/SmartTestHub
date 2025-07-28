@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# Install system dependencies and security tools
+# Install system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         inotify-tools \
@@ -9,17 +9,7 @@ RUN apt-get update && \
         git \
         curl \
         ca-certificates \
-        build-essential \
-        gcc \
-        g++ \
-        make \
-        python3-dev \
-        libffi-dev \
-        libssl-dev \
-        htop \
-        procps \
-        time \
-        && \
+        build-essential && \
     rm -rf /var/lib/apt/lists/*
 
 # Set up working directory

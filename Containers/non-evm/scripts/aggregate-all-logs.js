@@ -9,23 +9,17 @@ if (!contractName) {
   process.exit(1);
 }
 
-console.log(`Starting AI aggregation for contract: ${contractName}`);
-
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 // CHANGE: output file
-const outputFile = `/app/logs/reports/${contractName}-report.txt`;
-
-console.log(`Output file will be: ${outputFile}`);
-console.log(`GEMINI_API_KEY is ${GEMINI_API_KEY ? 'set' : 'NOT set'}`);
+const outputFile = `/app/logs/reports/${contractName}-report.md`;
 
 function tryRead(file, fallback = '') {
   try {
     return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : fallback;
   } catch (e) {
-    console.log(`Failed to read ${file}: ${e.message}`);
     return fallback;
   }
 }
@@ -49,7 +43,7 @@ function aggregateDir(dir, filter = () => true) {
     .join('\n\n');
 }
 
-const mainReportNote = `Note: After aggregation, only the main AI-enhanced report (${contractName}-report.txt) is retained in /app/logs/reports and /app/contracts/${contractName} for this contract.`;
+const mainReportNote = `Note: After aggregation, only the main AI-enhanced report (${contractName}-report.md) is retained in /app/logs/reports and /app/contracts/${contractName} for this contract.`;
 
 let fullLog = '';
 fullLog += section('Non-EVM Container Procedure Log', tryRead('/app/logs/test.log'));
@@ -88,7 +82,7 @@ ${fullLog}
 async function enhanceReport() {
   if (!GEMINI_API_KEY) {
     console.error("Error: GEMINI_API_KEY environment variable not set.");
-    fs.writeFileSync(outputFile, "Error: GEMINI_API_KEY not set. Cannot generate enhanced report.\n\n" + prompt);
+    fs.writeFileSync(outputFile, "# Error: GEMINI_API_KEY not set. Cannot generate enhanced report.\n" + prompt);
     process.exit(1);
   }
   try {
@@ -115,7 +109,7 @@ async function enhanceReport() {
     console.log(`AI-enhanced report written to ${outputFile}`);
   } catch (err) {
     console.error("AI enhancement failed, writing raw logs instead.", err?.message || err);
-    fs.writeFileSync(outputFile, fullLog + "\n\n=====================================\n\nAI enhancement failed.\n");
+    fs.writeFileSync(outputFile, fullLog + "\n\n---\n\n# AI enhancement failed.\n");
   }
 }
 

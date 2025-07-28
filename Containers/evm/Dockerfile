@@ -25,17 +25,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && node --version \
     && npm --version
 
-# Create a Python virtual environment and install security tools
+# Create a Python virtual environment and install Slither
 RUN python3 -m venv /opt/venv && \
     . /opt/venv/bin/activate && \
-    pip install --upgrade pip && \
-    (pip install --timeout 600 slither-analyzer mythril || \
-     (echo "Retrying with individual packages..." && \
-      pip install slither-analyzer && \
-      pip install --no-deps mythril && \
-      pip install "z3-solver>=4.8.8.0" "web3>=6.0.0,<8.0.0" "eth-utils>=2.0.0" \
-             "eth-abi>=4.0.0" "pycryptodome>=3.4.6" "packaging" "requests" \
-             "coloredlogs>=10.0" "semantic_version>=2.8.0,<3.0.0")) && \
+    pip install slither-analyzer && \
     echo 'source /opt/venv/bin/activate' >> /root/.bashrc
 
 # Add virtual environment to PATH

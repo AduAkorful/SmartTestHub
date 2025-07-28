@@ -1,26 +1,29 @@
 {
-  "name": "evm-tools-simplified",
+  "name": "evm-tools",
   "version": "1.0.0",
-  "description": "Simplified EVM tools environment for smart contract testing",
+  "description": "EVM tools environment with Hardhat, Foundry, Slither, Gas Reporter etc.",
   "scripts": {
-    "test": "hardhat test",
-    "compile": "hardhat compile",
+    "test": "hardhat test --config ./config/hardhat.config.js",
+    "coverage": "hardhat coverage --config ./config/hardhat.config.js",
+    "compile": "hardhat compile --config ./config/hardhat.config.js",
+    "lint": "eslint .",
     "start": "bash ./entrypoint.sh"
   },
   "devDependencies": {
-    "hardhat": "^2.25.0",
-    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
-    "@nomicfoundation/hardhat-network-helpers": "^1.0.10",
-    "@nomicfoundation/hardhat-chai-matchers": "^2.0.6",
-    "@nomicfoundation/hardhat-ethers": "^3.0.6",
-    "@nomicfoundation/hardhat-verify": "^2.0.0",
-    "@typechain/hardhat": "^9.1.0",
+    "hardhat": "^2.22.3",
+    "eslint": "^8.57.0",
+    "@nomiclabs/hardhat-waffle": "^2.0.6",
+    "@nomiclabs/hardhat-ethers": "^2.0.6",
+    "@nomiclabs/hardhat-etherscan": "^3.0.7",
+    "hardhat-gas-reporter": "^1.0.10",
+    "hardhat-contract-sizer": "^2.10.0",
+    "solidity-coverage": "^0.8.5",
     "chai": "^4.4.1",
-    "ethers": "^6.4.0",
-    "typechain": "^8.3.0"
+    "@openzeppelin/test-helpers": "^0.5.16",
+    "@openzeppelin/contracts": "^5.0.2"
   },
   "dependencies": {
-    "dotenv": "^16.4.5",
-    "axios": "^1.6.8"
+    "ethers": "^5.7.2",
+    "dotenv": "^16.4.5"
   }
 }

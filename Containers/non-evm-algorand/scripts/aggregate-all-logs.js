@@ -13,7 +13,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
-const outputFile = `/app/logs/reports/${contractName}-report.txt`;
+const outputFile = `/app/logs/reports/${contractName}-report.md`;
 
 function tryRead(file, fallback = '') {
   try {
@@ -43,14 +43,11 @@ function aggregateDir(dir, filter = () => true) {
 
 let fullLog = '';
 fullLog += section('Algorand Container Procedure Log', tryRead('/app/logs/test.log'));
-fullLog += section('PyTest Reports', aggregateDir(`/app/logs/reports/${contractName}`, f => f.endsWith('.log') || f.endsWith('.xml') || f.endsWith('.txt')));
-fullLog += section('Enhanced Test Reports', aggregateDir(`/app/contracts/${contractName}/logs/tests`, f => f.endsWith('.log')));
-fullLog += section('Coverage Reports', aggregateDir(`/app/contracts/${contractName}/logs/coverage`, f => f.endsWith('.xml') || f.endsWith('.html') || f.endsWith('.log')));
-fullLog += section('Security Analysis', aggregateDir(`/app/contracts/${contractName}/logs/security`, f => f.endsWith('.log')));
-fullLog += section('Performance Metrics', aggregateDir(`/app/contracts/${contractName}/logs/benchmarks`, f => f.endsWith('.log')));
+fullLog += section('PyTest Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.xml') || f.endsWith('.txt')));
+fullLog += section('Coverage Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.xml') || f.endsWith('.html')));
+fullLog += section('Security Analysis', aggregateDir('/app/logs/security', f => f.endsWith('.log')));
 fullLog += section('TEAL Analysis', tryRead(`/app/logs/${contractName}-teal.log`));
-fullLog += section('Global Coverage Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.xml') || f.endsWith('.html')));
-fullLog += section('Global Security Analysis', aggregateDir('/app/logs/security', f => f.endsWith('.log')));
+fullLog += section('Performance Metrics', aggregateDir('/app/logs/performance'));
 fullLog += section('AI Summaries and Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
 fullLog += section('Other Logs', aggregateDir('/app/logs', f => f.endsWith('.log') && !f.includes('test.log')));
 
@@ -113,7 +110,7 @@ async function enhanceReport() {
     console.log(`AI-enhanced report written to ${outputFile}`);
   } catch (err) {
     console.error("AI enhancement failed, writing raw logs instead.", err?.message || err);
-    fs.writeFileSync(outputFile, fullLog + "\n\n=====================================\n\nAI enhancement failed.\n");
+    fs.writeFileSync(outputFile, fullLog + "\n\n---\n\n# AI enhancement failed.\n");
   }
 }
 
