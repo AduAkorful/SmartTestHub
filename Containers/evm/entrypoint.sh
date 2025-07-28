@@ -58,17 +58,19 @@ require("@nomicfoundation/hardhat-toolbox");
 
 module.exports = {
   solidity: {
-    compilers: [
-      { version: "0.8.24", settings: { optimizer: { enabled: true, runs: 200 } } },
-      { version: "0.8.20" },
-      { version: "0.8.18" },
-      { version: "0.8.17" },
-      { version: "0.6.12" }
-    ],
+    version: "0.8.24",
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200,
+      },
+    },
   },
   networks: {
-    hardhat: { chainId: 1337, allowUnlimitedContractSize: true },
-    localhost: { url: "http://127.0.0.1:8545" },
+    hardhat: { 
+      chainId: 1337,
+      allowUnlimitedContractSize: true 
+    },
   },
   paths: {
     sources: "./contracts/${contract_name}",
@@ -101,7 +103,15 @@ describe("${contract_name} Contract Tests", function () {
     beforeEach(async function () {
         [owner, addr1, addr2] = await ethers.getSigners();
         const ${contract_name}Factory = await ethers.getContractFactory("${contract_name}");
-        ${contract_name,,} = await ${contract_name}Factory.deploy();
+        
+        // Try to deploy with constructor parameters if needed
+        try {
+            ${contract_name,,} = await ${contract_name}Factory.deploy();
+        } catch (error) {
+            // If deployment fails, it might need constructor parameters
+            console.log("Deployment failed, contract might need constructor parameters");
+            throw error;
+        }
     });
     
     it("Should deploy successfully", async function () {
@@ -110,7 +120,7 @@ describe("${contract_name} Contract Tests", function () {
     
     it("Should have correct deployment parameters", async function () {
         // Add specific tests based on your contract
-        expect(await ${contract_name,,}.deployed()).to.be.ok;
+        expect(${contract_name,,}.target).to.not.equal(ethers.ZeroAddress);
     });
 });
 EOF

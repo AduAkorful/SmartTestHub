@@ -10,8 +10,14 @@
   "devDependencies": {
     "hardhat": "^2.25.0",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.10",
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.6",
+    "@nomicfoundation/hardhat-ethers": "^3.0.6",
+    "@nomicfoundation/hardhat-verify": "^2.0.0",
+    "@typechain/hardhat": "^9.1.0",
     "chai": "^4.4.1",
-    "ethers": "^5.7.2"
+    "ethers": "^6.4.0",
+    "typechain": "^8.3.0"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
