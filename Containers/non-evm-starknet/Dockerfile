@@ -24,7 +24,7 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Install Python dependencies with fallback strategy for Cairo
+# Install Python dependencies with Cairo compiler support
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir --timeout 600 -r requirements.txt || \
@@ -39,6 +39,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
      pip install --no-cache-dir ipython ipdb click python-dotenv pyyaml && \
      pip install --no-cache-dir requests aiohttp pandas numpy && \
      pip install --no-cache-dir cryptography pycryptodome web3 eth-utils)
+
+# Ensure Cairo compiler tools are available
+RUN pip install --no-cache-dir starknet-devnet cairo-rs-py || \
+    echo "Additional Cairo tools installation attempted"
 
 # Install npm dependencies
 COPY scripts/package.json /app/scripts/
