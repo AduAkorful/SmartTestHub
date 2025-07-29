@@ -59,14 +59,58 @@ ${mainReportNote}
 `);
 
 const prompt = `
-You are an expert StarkNet (Cairo) smart contract auditor.
-You are given the **raw logs and reports** from a full StarkNet smart contract testing and analysis pipeline (see below).
-- Organize the output into logical sections: Compilation, Tests, Lint, Security, AI/Manual summaries.
-- For each tool, summarize key findings in clear, actionable language.
-- For each error, warning, or failed test, provide insights to help resolve the issue.
-- For security/lint findings, explain risks and recommend best practices or code changes.
-- Highlight important information with bullet points or tables.
-- Make the summary comprehensive, structured, and developer-friendly.
+You are an expert smart contract auditor specializing in StarkNet/Cairo contracts.
+You are given the **raw logs and reports** from a full smart contract testing and analysis pipeline.
+
+**IMPORTANT: Structure your response in exactly these 6 sections in this order:**
+
+## 1. OVERVIEW
+- Contract Information (file name, size, lines of code, contract type: StarkNet Cairo)
+- Analysis Status (Cairo compilation, testing status, security status, coverage status)
+- Summary of all tools that ran and their overall results
+
+## 2. TESTING
+- Test execution results (passed/failed/skipped counts)
+- Cairo compilation test results
+- Contract deployment test results
+- Test coverage metrics and detailed test analysis
+- Testing recommendations for StarkNet-specific scenarios
+
+## 3. SECURITY
+- Security Summary with vulnerability counts (Critical: X, High: X, Medium: X, Low: X)
+- Security Score assessment (e.g., "Good security with minor issues - Address the identified vulnerabilities")
+- Detailed vulnerability findings with Cairo-specific security patterns
+- Results from security tools (Cairo security analysis, custom StarkNet patterns)
+- StarkNet security best practices and storage pattern recommendations
+
+## 4. CODE QUALITY
+- Code quality score and overall assessment
+- Cairo linting results (errors, warnings, style issues)
+- Cairo code metrics (complexity, maintainability, documentation quality)
+- StarkNet coding standards compliance and naming conventions
+- Code improvement suggestions for Cairo development
+
+## 5. PERFORMANCE
+- Cairo Analysis (compiled bytecode size, complexity analysis, gas estimation)
+- Contract metrics (Cairo file size, function count, storage efficiency)
+- Performance recommendations and Cairo optimization opportunities
+- StarkNet transaction cost analysis and proof generation efficiency
+
+## 6. AI SUMMARY
+- Overall Assessment (Excellent/Good/Fair/Poor)
+- Risk Level (Low/Medium/High/Critical)
+- Deployment Readiness (Ready/Ready with improvements/Not ready)
+- Key Findings (main observations and StarkNet-specific issues)
+- Priority Actions (most important next steps for Cairo contracts)
+- Recommendations (StarkNet best practices and improvements)
+
+**Analysis Guidelines:**
+- Extract specific metrics from logs (file size, line counts, function counts, test numbers)
+- Focus on Cairo-specific vulnerabilities and patterns
+- Analyze Cairo compilation and bytecode efficiency
+- Identify storage variable and event handling issues
+- Provide actionable recommendations for StarkNet development
+- Include specific line numbers and code references when available
 
 Here are the complete logs and reports:
 ${fullLog}

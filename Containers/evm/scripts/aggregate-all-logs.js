@@ -13,8 +13,8 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
-// CHANGE: output file
-const outputFile = `/app/logs/reports/${contractName}-report.md`;
+// Output file
+const outputFile = `/app/logs/reports/${contractName}-report.txt`;
 
 function tryRead(file, fallback = '') {
   try {
@@ -61,14 +61,56 @@ If any section above says "_No output found._", that log was missing or the tool
 `);
 
 const prompt = `
-You are an expert smart contract auditor.
-You are given the **raw logs and reports** from a full smart contract testing and analysis pipeline (see below).
-- Organize the output into logical sections: Compilation, Tests, Security, Coverage, and AI/Manual summaries.
-- For each tool, summarize key findings in clear, actionable language.
-- For each error, warning, or failed test, provide insights to help resolve the issue.
-- For security findings, explain risks and recommend best practices or code changes.
-- Highlight important information with bullet points or tables.
-- Make the summary comprehensive, structured, and developer-friendly.
+You are an expert smart contract auditor specializing in EVM/Solidity contracts.
+You are given the **raw logs and reports** from a full smart contract testing and analysis pipeline.
+
+**IMPORTANT: Structure your response in exactly these 6 sections in this order:**
+
+## 1. OVERVIEW
+- Contract Information (file name, size, lines of code, contract type)
+- Analysis Status (compilation success/failure, testing status, security status, coverage status)
+- Summary of all tools that ran and their overall results
+
+## 2. TESTING
+- Test execution results (passed/failed/skipped counts)
+- Test coverage metrics (overall %, statement %, branch %, function %)
+- Detailed test results and any test failures
+- Testing recommendations and missing test scenarios
+
+## 3. SECURITY
+- Security Summary with vulnerability counts (Critical: X, High: X, Medium: X, Low: X)
+- Security Score assessment (e.g., "Good security with minor issues - Address the identified vulnerabilities")
+- Detailed vulnerability findings with severity, description, and fix recommendations
+- Results from security tools (Slither, Mythril, custom analysis)
+- Security best practices recommendations
+
+## 4. CODE QUALITY
+- Code quality score and overall assessment
+- Linting results (errors, warnings, style issues)
+- Code metrics (complexity, maintainability, documentation quality)
+- Naming conventions and coding standards compliance
+- Code improvement suggestions
+
+## 5. PERFORMANCE
+- Gas analysis (deployment cost, average function gas usage, optimization suggestions)
+- Contract metrics (size, complexity, dependencies)
+- Performance recommendations and optimization opportunities
+- Efficiency analysis and resource usage
+
+## 6. AI SUMMARY
+- Overall Assessment (Excellent/Good/Fair/Poor)
+- Risk Level (Low/Medium/High/Critical)
+- Deployment Readiness (Ready/Ready with improvements/Not ready)
+- Key Findings (main observations and critical issues)
+- Priority Actions (most important next steps)
+- Recommendations (best practices and improvements)
+
+**Analysis Guidelines:**
+- Extract specific metrics from logs (file size, line counts, test numbers, gas usage)
+- Identify and categorize all issues by severity
+- Provide actionable recommendations for each finding
+- Use clear, developer-friendly language
+- Include specific line numbers and code references when available
 
 Here are the complete logs and reports:
 ${fullLog}

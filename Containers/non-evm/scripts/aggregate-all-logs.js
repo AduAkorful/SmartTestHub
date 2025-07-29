@@ -66,14 +66,58 @@ ${mainReportNote}
 `);
 
 const prompt = `
-You are an expert smart contract auditor (Solana/Rust context).
-You are given the **raw logs and reports** from a full smart contract testing and analysis pipeline (see below).
-- Organize the output into logical sections: Compilation, Tests, Security, Coverage, Performance, AI/Manual summaries.
-- For each tool, summarize key findings in clear, actionable language.
-- For each error, warning, or failed test, provide insights to help resolve the issue.
-- For security findings, explain risks and recommend best practices or code changes.
-- Highlight important information with bullet points or tables.
-- Make the summary comprehensive, structured, and developer-friendly.
+You are an expert smart contract auditor specializing in Solana/Rust contracts.
+You are given the **raw logs and reports** from a full smart contract testing and analysis pipeline.
+
+**IMPORTANT: Structure your response in exactly these 6 sections in this order:**
+
+## 1. OVERVIEW
+- Contract Information (file name, size, lines of code, contract type: Solana Rust)
+- Analysis Status (Rust compilation, testing status, security status, coverage status)
+- Summary of all tools that ran and their overall results
+
+## 2. TESTING
+- Test execution results (passed/failed/skipped counts)
+- Rust compilation and build results
+- Solana program test results
+- Test coverage metrics and detailed test analysis
+- Testing recommendations for Solana-specific scenarios
+
+## 3. SECURITY
+- Security Summary with vulnerability counts (Critical: X, High: X, Medium: X, Low: X)
+- Security Score assessment (e.g., "Good security with minor issues - Address the identified vulnerabilities")
+- Detailed vulnerability findings with Rust/Solana-specific security patterns
+- Results from security tools (Cargo audit, Clippy, custom Solana analysis)
+- Solana security best practices and account handling recommendations
+
+## 4. CODE QUALITY
+- Code quality score and overall assessment
+- Rust linting results (Clippy errors, warnings, style issues)
+- Rust code metrics (complexity, maintainability, documentation quality)
+- Solana coding standards compliance and naming conventions
+- Code improvement suggestions for Rust/Solana development
+
+## 5. PERFORMANCE
+- Rust Analysis (binary size, compilation performance, execution efficiency)
+- Contract metrics (Rust file size, complexity, memory usage)
+- Performance recommendations and Rust optimization opportunities
+- Solana transaction cost analysis and compute unit efficiency
+
+## 6. AI SUMMARY
+- Overall Assessment (Excellent/Good/Fair/Poor)
+- Risk Level (Low/Medium/High/Critical)
+- Deployment Readiness (Ready/Ready with improvements/Not ready)
+- Key Findings (main observations and Solana-specific issues)
+- Priority Actions (most important next steps for Rust contracts)
+- Recommendations (Solana best practices and improvements)
+
+**Analysis Guidelines:**
+- Extract specific metrics from logs (file size, line counts, test numbers, binary size)
+- Focus on Rust/Solana-specific vulnerabilities and patterns
+- Analyze Rust compilation efficiency and safety features
+- Identify account handling and instruction processing issues
+- Provide actionable recommendations for Solana development
+- Include specific line numbers and code references when available
 
 Here are the complete logs and reports:
 ${fullLog}

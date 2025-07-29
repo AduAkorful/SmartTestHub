@@ -67,14 +67,58 @@ Metadata:
 `);
 
 const prompt = `
-You are an expert smart contract auditor (Algorand/PyTeal context).
-You are given the **raw logs and reports** from a full smart contract testing and analysis pipeline (see below).
-- Organize the output into logical sections: Compilation, Tests, Security, Coverage, and AI/Manual summaries.
-- For each tool, summarize key findings in clear, actionable language.
-- For each error, warning, or failed test, provide insights to help resolve the issue.
-- For security findings, explain risks and recommend best practices or code changes.
-- Highlight important information with bullet points or tables.
-- Make the summary comprehensive, structured, and developer-friendly.
+You are an expert smart contract auditor specializing in Algorand/PyTeal contracts.
+You are given the **raw logs and reports** from a full smart contract testing and analysis pipeline.
+
+**IMPORTANT: Structure your response in exactly these 6 sections in this order:**
+
+## 1. OVERVIEW
+- Contract Information (file name, size, lines of code, contract type: Algorand PyTeal)
+- Analysis Status (syntax check, TEAL compilation, testing status, security status, coverage status)
+- Summary of all tools that ran and their overall results
+
+## 2. TESTING
+- Test execution results (passed/failed/skipped counts)
+- PyTeal compilation test results
+- TEAL generation and validation results
+- Test coverage metrics and detailed test analysis
+- Testing recommendations for Algorand-specific scenarios
+
+## 3. SECURITY
+- Security Summary with vulnerability counts (Critical: X, High: X, Medium: X, Low: X)
+- Security Score assessment (e.g., "Good security with minor issues - Address the identified vulnerabilities")
+- Detailed vulnerability findings with Algorand-specific security patterns
+- Results from security tools (Bandit, Flake8, MyPy, custom Algorand analysis)
+- Algorand security best practices and state management recommendations
+
+## 4. CODE QUALITY
+- Code quality score and overall assessment
+- Python linting results (errors, warnings, style issues)
+- PyTeal code metrics (complexity, maintainability, documentation quality)
+- Algorand coding standards compliance and naming conventions
+- Code improvement suggestions for PyTeal development
+
+## 5. PERFORMANCE
+- TEAL Analysis (compiled TEAL size, opcode count, execution cost estimates)
+- Contract metrics (Python file size, complexity, TEAL efficiency)
+- Performance recommendations and TEAL optimization opportunities
+- Algorand transaction cost analysis and resource usage
+
+## 6. AI SUMMARY
+- Overall Assessment (Excellent/Good/Fair/Poor)
+- Risk Level (Low/Medium/High/Critical)
+- Deployment Readiness (Ready/Ready with improvements/Not ready)
+- Key Findings (main observations and Algorand-specific issues)
+- Priority Actions (most important next steps for PyTeal contracts)
+- Recommendations (Algorand best practices and improvements)
+
+**Analysis Guidelines:**
+- Extract specific metrics from logs (file size, line counts, TEAL size, test numbers)
+- Focus on Algorand-specific vulnerabilities and patterns
+- Analyze PyTeal to TEAL compilation efficiency
+- Identify state management and transaction handling issues
+- Provide actionable recommendations for Algorand development
+- Include specific line numbers and code references when available
 
 Here are the complete logs and reports:
 ${fullLog}
