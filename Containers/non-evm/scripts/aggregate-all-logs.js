@@ -14,7 +14,7 @@ const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 // CHANGE: output file
-const outputFile = `/app/logs/reports/${contractName}-report.md`;
+const outputFile = `/app/logs/reports/${contractName}-report.txt`;
 
 function tryRead(file, fallback = '') {
   try {
@@ -46,7 +46,7 @@ function aggregateDir(dir, filter = () => true) {
 const mainReportNote = `Note: After aggregation, only the main AI-enhanced report (${contractName}-report.md) is retained in /app/logs/reports and /app/contracts/${contractName} for this contract.`;
 
 let fullLog = '';
-fullLog += section('Non-EVM Container Procedure Log', tryRead('/app/logs/test.log'));
+// Removed: Docker process logs (test.log) to reduce length
 fullLog += section('Security Audit (Cargo Audit)', aggregateDir('/app/logs/security', f => f.endsWith('-cargo-audit.log')));
 fullLog += section('Security Lint (Clippy)', aggregateDir('/app/logs/security', f => f.endsWith('-clippy.log')));
 fullLog += section('Coverage Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.html')));
@@ -55,12 +55,12 @@ fullLog += section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f
 
 fullLog += section('Tool Run Confirmation', `
 The following tools' logs were aggregated for ${contractName}:
-- Compilation: test.log, build logs
-- Testing: test.log, coverage (all files in /app/logs/coverage starting with ${contractName})
+- Testing: Coverage (all files in /app/logs/coverage starting with ${contractName})
 - Security: Cargo Audit and Clippy (all files in /app/logs/security starting with ${contractName})
 - Performance: All logs in /app/logs/benchmarks starting with ${contractName}
 - AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
-If any section above says "_No output found._", that log was missing or the tool did not run.
+- Other specific tool logs (excluding verbose container procedure logs)
+If any section above says "_No output found._", that tool was missing or the tool did not run.
 
 ${mainReportNote}
 `);

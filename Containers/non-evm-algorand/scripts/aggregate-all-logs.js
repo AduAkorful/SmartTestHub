@@ -13,7 +13,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
-const outputFile = `/app/logs/reports/${contractName}-report.md`;
+const outputFile = `/app/logs/reports/${contractName}-report.txt`;
 
 function tryRead(file, fallback = '') {
   try {
@@ -42,7 +42,7 @@ function aggregateDir(dir, filter = () => true) {
 }
 
 let fullLog = '';
-fullLog += section('Algorand Container Procedure Log', tryRead('/app/logs/test.log'));
+// Docker process logs removed to reduce length - only tool-specific outputs included
 fullLog += section('PyTest Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.xml') || f.endsWith('.txt')));
 fullLog += section('Coverage Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.xml') || f.endsWith('.html')));
 fullLog += section('Security Analysis', aggregateDir('/app/logs/security', f => f.endsWith('.log')));
@@ -53,12 +53,13 @@ fullLog += section('Other Logs', aggregateDir('/app/logs', f => f.endsWith('.log
 
 fullLog += section('Tool Run Confirmation', `
 The following tools' logs were aggregated for ${contractName}:
-- Compilation: test.log, TEAL compilation logs
 - Testing: PyTest (all files in /app/logs/reports starting with ${contractName}), coverage (all files in /app/logs/coverage starting with ${contractName})
 - Security: Bandit, MyPy, Flake8 (all files in /app/logs/security starting with ${contractName})
 - Performance: Metrics and benchmarks (all files in /app/logs/performance starting with ${contractName})
+- TEAL Analysis: Compilation and bytecode analysis
 - AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
-If any section above says "_No output found._", that log was missing or the tool did not run.
+- Other specific tool logs (excluding verbose container procedure logs)
+If any section above says "_No output found._", that tool was missing or the tool did not run.
 
 Metadata:
 - Generated: 2025-07-24 17:34:51 UTC

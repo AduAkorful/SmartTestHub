@@ -13,7 +13,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
-const outputFile = `/app/logs/reports/${contractName}-report.md`;
+const outputFile = `/app/logs/reports/${contractName}-report.txt`;
 
 function tryRead(file, fallback = '') {
   try {
@@ -41,19 +41,19 @@ function aggregateDir(dir, filter = () => true) {
 const mainReportNote = `Note: After aggregation, only the main AI-enhanced report (${contractName}-report.md) is retained in /app/logs/reports and /app/contracts/${contractName} for this contract.`;
 
 let fullLog = '';
-fullLog += section('StarkNet Container Procedure Log', tryRead('/app/logs/test.log'));
+// Docker process logs removed to reduce length - only tool-specific outputs included
 fullLog += section('Lint (starknet-lint)', aggregateDir('/app/logs/security', f => f.endsWith('-lint.log')));
 fullLog += section('Security (starknet-audit)', aggregateDir('/app/logs/security', f => f.endsWith('-audit.log')));
 fullLog += section('Compilation Logs', aggregateDir('/app/logs', f => f.endsWith('-compile.log')));
 fullLog += section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
 fullLog += section('Tool Run Confirmation', `
 The following tools' logs were aggregated for ${contractName}:
-- Compilation: test.log, compile logs
-- Testing: test.log (pytest)
+- Compilation: Cairo compile logs (excluding verbose container procedure logs)
+- Testing: PyTest results (tool-specific outputs only)
 - Lint: starknet-lint (all files in /app/logs/security starting with ${contractName})
 - Security: starknet-audit (all files in /app/logs/security starting with ${contractName})
 - AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
-If any section above says "_No output found._", that log was missing or the tool did not run.
+If any section above says "_No output found._", that tool was missing or the tool did not run.
 
 ${mainReportNote}
 `);
