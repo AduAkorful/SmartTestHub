@@ -1,14 +1,15 @@
 pyteal>=0.22.0
 py-algorand-sdk>=2.3.0
+algosdk>=2.3.0
 beaker-pyteal>=1.0.0
 algokit>=1.0
 pytest>=7.0.0
 pytest-asyncio>=0.21.0
 pytest-cov>=4.0.0
 pytest-timeout>=2.1.0
+pytest-xdist>=3.0.0
 flake8>=6.0.0
 bandit>=1.7.5
 mypy>=1.0.0
 black>=23.0.0
-algosdk>=2.3.0
 typing-extensions>=4.7.0
