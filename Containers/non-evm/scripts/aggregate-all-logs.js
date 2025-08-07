@@ -43,7 +43,7 @@ function aggregateDir(dir, filter = () => true) {
     .join('\n\n');
 }
 
-const mainReportNote = `Note: After aggregation, only the main AI-enhanced report (${contractName}-report.md) is retained in /app/logs/reports and /app/contracts/${contractName} for this contract.`;
+const mainReportNote = `Note: After aggregation, only the main AI-enhanced report (${contractName}-report.txt) is retained in /app/logs/reports and /app/contracts/${contractName} for this contract.`;
 
 let fullLog = '';
 // Removed: Docker process logs (test.log) to reduce length

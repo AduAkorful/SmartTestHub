@@ -38,24 +38,37 @@ function aggregateDir(dir, filter = () => true) {
     .join('\n\n');
 }
 
-const mainReportNote = `Note: After aggregation, only the main AI-enhanced report (${contractName}-report.md) is retained in /app/logs/reports and /app/contracts/${contractName} for this contract.`;
+const mainReportNote = `Note: After aggregation, only the main AI-enhanced report (${contractName}-report.txt) is retained in /app/logs/reports and /app/contracts/${contractName} for this contract.`;
 
 let fullLog = '';
-// Docker process logs removed to reduce length - only tool-specific outputs included
-fullLog += section('Lint (starknet-lint)', aggregateDir('/app/logs/security', f => f.endsWith('-lint.log')));
-fullLog += section('Security (starknet-audit)', aggregateDir('/app/logs/security', f => f.endsWith('-audit.log')));
-fullLog += section('Compilation Logs', aggregateDir('/app/logs', f => f.endsWith('-compile.log')));
+// Aggregate all tool outputs for StarkNet container
+fullLog += section('PyTest Test Results', tryRead('/app/logs/test.log'));
+fullLog += section('Flake8 Linting', tryRead(`/app/logs/security/${contractName}-flake8.log`));
+fullLog += section('Security Analysis', tryRead(`/app/logs/security/${contractName}-bandit.log`));
+fullLog += section('Cairo Compilation', tryRead(`/app/logs/${contractName}-compile.log`));
+fullLog += section('Compiled Contract', tryRead(`/app/logs/${contractName}-compiled.json`));
 fullLog += section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
 fullLog += section('Tool Run Confirmation', `
-The following tools' logs were aggregated for ${contractName}:
-- Compilation: Cairo compile logs (excluding verbose container procedure logs)
-- Testing: PyTest results (tool-specific outputs only)
-- Lint: starknet-lint (all files in /app/logs/security starting with ${contractName})
-- Security: starknet-audit (all files in /app/logs/security starting with ${contractName})
-- AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
-If any section above says "_No output found._", that tool was missing or the tool did not run.
+The following tools were executed for ${contractName}:
+- Testing: PyTest for contract functionality and syntax validation
+- Linting: Flake8 for code style analysis (on Cairo files)
+- Security: Basic security analysis for Cairo contracts
+- Compilation: cairo-compile for contract compilation and validation
+- Code Analysis: File structure and syntax verification
 
-${mainReportNote}
+Tool Output Locations:
+- Test results: /app/logs/test.log
+- Flake8 output: /app/logs/security/${contractName}-flake8.log
+- Security analysis: /app/logs/security/${contractName}-bandit.log
+- Compilation logs: /app/logs/${contractName}-compile.log
+- Compiled contract: /app/logs/${contractName}-compiled.json
+
+If any section above says "_No output found._", that tool either failed to run or produced no output.
+
+Metadata:
+- Generated: ${new Date().toISOString()}
+- Container: StarkNet Cairo Analysis
+- Contract: ${contractName}
 `);
 
 const prompt = `

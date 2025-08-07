@@ -42,28 +42,40 @@ function aggregateDir(dir, filter = () => true) {
 }
 
 let fullLog = '';
-// Docker process logs removed to reduce length - only tool-specific outputs included
-fullLog += section('PyTest Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.xml') || f.endsWith('.txt')));
-fullLog += section('Coverage Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.xml') || f.endsWith('.html')));
-fullLog += section('Security Analysis', aggregateDir('/app/logs/security', f => f.endsWith('.log')));
-fullLog += section('TEAL Analysis', tryRead(`/app/logs/${contractName}-teal.log`));
-fullLog += section('Performance Metrics', aggregateDir('/app/logs/performance'));
-fullLog += section('AI Summaries and Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
-fullLog += section('Other Logs', aggregateDir('/app/logs', f => f.endsWith('.log') && !f.includes('test.log')));
+// Aggregate all tool outputs from the contract-specific results directory
+const contractReportsDir = `/app/logs/reports/${contractName}`;
+
+fullLog += section('PyTest Unit Tests', tryRead(`${contractReportsDir}/unittest.log`));
+fullLog += section('PyTest Integration Tests', tryRead(`${contractReportsDir}/integration.log`));
+fullLog += section('PyTest Performance Tests', tryRead(`${contractReportsDir}/performance.log`));
+fullLog += section('Coverage Reports', tryRead(`${contractReportsDir}/coverage.xml`));
+fullLog += section('Bandit Security Analysis', tryRead(`${contractReportsDir}/bandit.log`));
+fullLog += section('MyPy Type Checking', tryRead(`${contractReportsDir}/mypy.log`));
+fullLog += section('Flake8 Style Analysis', tryRead(`${contractReportsDir}/flake8.log`));
+fullLog += section('Black Code Formatting', tryRead(`${contractReportsDir}/black.log`));
+fullLog += section('TEAL Compilation Analysis', tryRead(`${contractReportsDir}/teal.log`));
+fullLog += section('TEAL Compilation Errors', tryRead(`${contractReportsDir}/teal-error.log`));
+fullLog += section('Test Summary', tryRead(`${contractReportsDir}/summary.txt`));
+fullLog += section('Other Logs', aggregateDir('/app/logs', f => f.endsWith('.log') && f.includes(contractName)));
 
 fullLog += section('Tool Run Confirmation', `
-The following tools' logs were aggregated for ${contractName}:
-- Testing: PyTest (all files in /app/logs/reports starting with ${contractName}), coverage (all files in /app/logs/coverage starting with ${contractName})
-- Security: Bandit, MyPy, Flake8 (all files in /app/logs/security starting with ${contractName})
-- Performance: Metrics and benchmarks (all files in /app/logs/performance starting with ${contractName})
-- TEAL Analysis: Compilation and bytecode analysis
-- AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
-- Other specific tool logs (excluding verbose container procedure logs)
-If any section above says "_No output found._", that tool was missing or the tool did not run.
+The following tools were executed for ${contractName}:
+- Testing: PyTest Unit Tests, Integration Tests, Performance Tests
+- Coverage: pytest-cov for code coverage analysis
+- Security Analysis: Bandit (security issues), MyPy (type checking), Flake8 (style issues)
+- Code Quality: Black (formatting check)
+- TEAL Analysis: PyTeal to TEAL compilation and metrics
+- Performance: TEAL opcode counting and efficiency analysis
+
+Tool Output Locations:
+- All tool outputs are saved in: /app/logs/reports/${contractName}/
+- Individual log files: unittest.log, integration.log, performance.log, bandit.log, mypy.log, flake8.log, black.log, teal.log
+
+If any section above says "_No output found._", that tool either failed to run or produced no output.
 
 Metadata:
-- Generated: 2025-07-24 17:34:51 UTC
-- User: AduAkorful
+- Generated: ${new Date().toISOString()}
+- Container: Algorand PyTeal Analysis
 - Contract: ${contractName}
 `);
 

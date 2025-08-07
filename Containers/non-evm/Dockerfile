@@ -65,9 +65,9 @@ RUN mkdir -p /app/logs/coverage /app/logs/reports /app/logs/benchmarks /app/logs
 
 ENV CARGO_TARGET_DIR=/app/target
 ENV RUSTC_WRAPPER=sccache
-ENV SCCACHE_CACHE_SIZE=2G
+ENV SCCACHE_CACHE_SIZE=12G
 ENV SCCACHE_DIR=/app/.cache/sccache
-ENV CARGO_BUILD_JOBS=4
+ENV CARGO_BUILD_JOBS=12
 ENV RUSTFLAGS="-C target-cpu=native"
 
 ENTRYPOINT ["/app/entrypoint.sh"]

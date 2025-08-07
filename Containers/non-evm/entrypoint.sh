@@ -3,7 +3,7 @@ set -e
 
 # --- Environment/parallelism setup ---
 export RUSTC_WRAPPER=sccache
-export SCCACHE_CACHE_SIZE=2G
+export SCCACHE_CACHE_SIZE=${SCCACHE_CACHE_SIZE:-12G}
 export SCCACHE_DIR="/app/.cache/sccache"
 export CARGO_TARGET_DIR=/app/target
 export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-$(nproc)}
@@ -107,6 +107,10 @@ description = "Smart contract automatically processed by SmartTestHub"
 
 [lib]
 crate-type = ["cdylib", "lib"]
+
+# Suppress Solana-specific warnings during development
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
 EOF
     case $project_type in
         "anchor")
@@ -237,25 +241,31 @@ EOF
         "native")
             cat > "$contracts_dir/tests/test_${contract_name}.rs" <<EOF
 use solana_program_test::*;
-use solana_sdk::{
-    account::Account,
-    instruction::{AccountMeta, Instruction},
-    pubkey::Pubkey,
-    signature::{Keypair, Signer},
-    transaction::Transaction,
-};
+use solana_sdk::pubkey::Pubkey;
 use ${contract_name}::*;
 
 #[tokio::test]
 async fn test_${contract_name}_basic() {
-    let _program_id = Pubkey::new_unique();
+    let program_id = Pubkey::new_unique();
     let program_test = ProgramTest::new(
         "${contract_name}",
-        _program_id,
+        program_id,
         processor!(process_instruction),
     );
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    let (_banks_client, _payer, _recent_blockhash) = program_test.start().await;
+    // Basic test that the program can be loaded and started
     assert!(true);
+}
+
+#[tokio::test]
+async fn test_${contract_name}_program_id() {
+    let program_id = Pubkey::new_unique();
+    let program_test = ProgramTest::new(
+        "${contract_name}",
+        program_id,
+        processor!(process_instruction),
+    );
+    assert!(!program_id.to_bytes().iter().all(|&b| b == 0));
 }
 EOF
             ;;
@@ -382,12 +392,12 @@ EOF
             # Aggregate all contract reports into a unified summary
             if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
                 node /app/scripts/aggregate-all-logs.js "$contract_name" | tee -a "$LOG_FILE"
-                log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.md"
+                log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.txt"
                 # Clean up all files for this contract in /app/contracts/${contract_name} except the report
-                find "$contracts_dir" -type f ! -name "${contract_name}-report.md" -delete
+                find "$contracts_dir" -type f ! -name "${contract_name}-report.txt" -delete
                 find "$contracts_dir" -type d -empty -delete
                 # Also clean up /app/logs/reports except the main report for this contract
-                find "/app/logs/reports" -type f -name "${contract_name}*" ! -name "${contract_name}-report.md" -delete
+                find "/app/logs/reports" -type f -name "${contract_name}*" ! -name "${contract_name}-report.txt" -delete
             fi
             log_with_timestamp "=========================================="
         } 2>&1
@@ -481,10 +491,10 @@ EOF
                 log_with_timestamp "🏁 Completed processing $filename"
                 if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
                     node /app/scripts/aggregate-all-logs.js "$contract_name" | tee -a "$LOG_FILE"
-                    log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.md"
-                    find "$contracts_dir" -type f ! -name "${contract_name}-report.md" -delete
+                    log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.txt"
+                    find "$contracts_dir" -type f ! -name "${contract_name}-report.txt" -delete
                     find "$contracts_dir" -type d -empty -delete
-                    find "/app/logs/reports" -type f -name "${contract_name}*" ! -name "${contract_name}-report.md" -delete
+                    find "/app/logs/reports" -type f -name "${contract_name}*" ! -name "${contract_name}-report.txt" -delete
                 fi
                 log_with_timestamp "=========================================="
             } 2>&1

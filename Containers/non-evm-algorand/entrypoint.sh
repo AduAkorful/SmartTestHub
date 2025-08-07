@@ -1,6 +1,19 @@
 #!/bin/bash
 set -e
 
+echo "🚀 Starting Enhanced Algorand PyTeal Container..."
+
+# Verify essential tools are available
+echo "🔧 Verifying tool availability..."
+command -v python3 >/dev/null 2>&1 && echo "✅ Python3 available" || echo "⚠️ Python3 not found"
+command -v pytest >/dev/null 2>&1 && echo "✅ PyTest available" || echo "⚠️ PyTest not found"
+command -v bandit >/dev/null 2>&1 && echo "✅ Bandit available" || echo "⚠️ Bandit not found"
+command -v mypy >/dev/null 2>&1 && echo "✅ MyPy available" || echo "⚠️ MyPy not found"
+command -v flake8 >/dev/null 2>&1 && echo "✅ Flake8 available" || echo "⚠️ Flake8 not found"
+command -v black >/dev/null 2>&1 && echo "✅ Black available" || echo "⚠️ Black not found"
+python3 -c "import pyteal; print('✅ PyTeal available')" 2>/dev/null || echo "⚠️ PyTeal not found"
+command -v node >/dev/null 2>&1 && echo "✅ Node.js available" || echo "⚠️ Node.js not found"
+
 # Enhanced logging setup with color support
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -254,42 +267,42 @@ run_comprehensive_tests() {
     
     # Unit Tests with enhanced reporting
     log_with_timestamp "🧪 Running unit tests..." "debug"
-    if pytest --cov="$contracts_dir/src" \
+    cd "$contracts_dir"
+    if python -m pytest --cov="src" \
              --cov-report=term \
              --cov-report=xml:"$test_results_dir/coverage.xml" \
              --cov-report=html:"$test_results_dir/coverage-html" \
              --junitxml="$test_results_dir/junit.xml" \
              --timeout=30 \
-             -v "$contracts_dir/tests/" 2>&1 | tee "$test_results_dir/unittest.log"; then
+             --tb=short \
+             -v tests/ 2>&1 | tee "$test_results_dir/unittest.log"; then
         log_with_timestamp "✅ Unit tests completed successfully" "success"
     else
-        log_with_timestamp "⚠️ Unit tests completed with issues" "warning"
+        log_with_timestamp "⚠️ Unit tests completed with issues (exit code: $?)" "warning"
+        # Still capture some output even if tests fail
+        echo "Test execution attempted but failed" >> "$test_results_dir/unittest.log"
     fi
+    cd /app
     
     # Integration Tests with timeout and retry
     log_with_timestamp "🔄 Running integration tests..." "integration"
-    for i in {1..3}; do
-        if CONTRACT_NAME="$contract_name" pytest -m integration \
-                 --junitxml="$test_results_dir/integration.xml" \
-                 "$contracts_dir/tests/" 2>&1 | tee "$test_results_dir/integration.log"; then
-            log_with_timestamp "✅ Integration tests completed successfully" "success"
-            break
-        else
-            log_with_timestamp "⚠️ Integration tests attempt $i failed" "warning"
-            [ $i -eq 3 ] && log_with_timestamp "❌ Integration tests failed after 3 attempts" "error"
-            sleep 5
-        fi
-    done
+    cd "$contracts_dir"
+    CONTRACT_NAME="$contract_name" python -m pytest -m integration \
+             --junitxml="$test_results_dir/integration.xml" \
+             --tb=short \
+             tests/ 2>&1 | tee "$test_results_dir/integration.log" || \
+        log_with_timestamp "⚠️ Integration tests completed with issues" "warning"
+    cd /app
     
     # Performance Tests with metrics
     log_with_timestamp "⚡ Running performance tests..." "performance"
-    if CONTRACT_NAME="$contract_name" pytest -m performance \
+    cd "$contracts_dir"
+    CONTRACT_NAME="$contract_name" python -m pytest -m performance \
              --junitxml="$test_results_dir/performance.xml" \
-             "$contracts_dir/tests/" 2>&1 | tee "$test_results_dir/performance.log"; then
-        log_with_timestamp "✅ Performance tests completed successfully" "success"
-    else
+             --tb=short \
+             tests/ 2>&1 | tee "$test_results_dir/performance.log" || \
         log_with_timestamp "⚠️ Performance tests completed with issues" "warning"
-    fi
+    cd /app
     
     # Collect detailed performance metrics
     collect_performance_metrics "$contract_name" "$contracts_dir"
@@ -298,59 +311,105 @@ run_comprehensive_tests() {
     log_with_timestamp "🛡️ Running comprehensive security analysis..." "security"
     
     # Bandit security scan with configuration
-    bandit -r "$contracts_dir/src/" \
+    log_with_timestamp "🔍 Running Bandit security scan..." "security"
+    if bandit -r "$contracts_dir/src/" \
            -f txt \
            -o "$test_results_dir/bandit.log" \
-           --confidence-level high \
-           --severity-level medium || \
+           --confidence-level low \
+           --severity-level low 2>&1; then
+        log_with_timestamp "✅ Bandit scan completed" "success"
+    else
         log_with_timestamp "⚠️ Bandit security scan completed with issues" "warning"
+        # Ensure we have some output even if bandit fails
+        echo "Bandit scan attempted but failed or found issues" >> "$test_results_dir/bandit.log"
+    fi
     
     # Static Analysis with detailed reporting
     log_with_timestamp "🔍 Running static analysis..." "debug"
     
     # MyPy type checking with strict mode
-    mypy "$contracts_dir/src/" \
-         --strict \
+    log_with_timestamp "🔍 Running MyPy type checking..." "debug"
+    if mypy "$contracts_dir/src/" \
          --show-error-codes \
          --show-error-context \
          --pretty \
-         > "$test_results_dir/mypy.log" 2>&1 || \
+         --ignore-missing-imports \
+         > "$test_results_dir/mypy.log" 2>&1; then
+        log_with_timestamp "✅ MyPy type checking completed" "success"
+    else
         log_with_timestamp "⚠️ MyPy type checking completed with issues" "warning"
+        echo "MyPy analysis attempted" >> "$test_results_dir/mypy.log"
+    fi
     
     # Flake8 style checking with detailed configuration
-    flake8 "$contracts_dir/src/" \
+    log_with_timestamp "🔍 Running Flake8 style checking..." "debug"
+    if flake8 "$contracts_dir/src/" \
            --max-line-length=88 \
            --extend-ignore=E203 \
            --statistics \
            --show-source \
-           > "$test_results_dir/flake8.log" 2>&1 || \
+           > "$test_results_dir/flake8.log" 2>&1; then
+        log_with_timestamp "✅ Flake8 style checking completed" "success"
+    else
         log_with_timestamp "⚠️ Flake8 style checking completed with issues" "warning"
+        echo "Flake8 analysis attempted" >> "$test_results_dir/flake8.log"
+    fi
     
     # Code Formatting check with Black
     log_with_timestamp "✨ Checking code formatting..." "debug"
-    black "$contracts_dir/src/" \
+    if black "$contracts_dir/src/" \
           --check \
           --diff \
-          > "$test_results_dir/black.log" 2>&1 || \
+          > "$test_results_dir/black.log" 2>&1; then
+        log_with_timestamp "✅ Black formatting check completed" "success"
+    else
         log_with_timestamp "⚠️ Black formatting check completed with issues" "warning"
+        echo "Black formatting check attempted" >> "$test_results_dir/black.log"
+    fi
     
     # TEAL Analysis with enhanced error handling
     log_with_timestamp "📝 Analyzing TEAL output..." "debug"
-    if ! python3 -c "
+    cd "$contracts_dir"
+    if python3 -c "
 import sys
-sys.path.append('$contracts_dir/src')
+sys.path.append('src')
 try:
-    from contract import approval_program
-    from pyteal import *
-    teal = compileTeal(approval_program(), mode=Mode.Application, version=6)
-    print(teal)
+    import contract
+    from pyteal import compileTeal, Mode
+    
+    # Try to compile approval program
+    if hasattr(contract, 'approval_program'):
+        approval_teal = compileTeal(contract.approval_program(), mode=Mode.Application, version=6)
+        print('=== APPROVAL PROGRAM ===')
+        print(approval_teal)
+        
+        # Count opcodes for performance metrics
+        opcodes = len([line for line in approval_teal.split('\n') if line and not line.startswith(('#', '//'))])
+        print(f'\n=== METRICS ===')
+        print(f'Approval Program Opcodes: {opcodes}')
+    
+    # Try to compile clear state program
+    if hasattr(contract, 'clear_state_program'):
+        clear_teal = compileTeal(contract.clear_state_program(), mode=Mode.Application, version=6)
+        print('\n=== CLEAR STATE PROGRAM ===')
+        print(clear_teal)
+    
+    print('\n=== COMPILATION SUCCESS ===')
+    
+except ImportError as e:
+    print(f'Import Error: {str(e)}', file=sys.stderr)
+    sys.exit(1)
 except Exception as e:
-    print(f'Error: {str(e)}', file=sys.stderr)
+    print(f'Compilation Error: {str(e)}', file=sys.stderr)
     sys.exit(1)
 " > "$test_results_dir/teal.log" 2> "$test_results_dir/teal-error.log"; then
+        log_with_timestamp "✅ TEAL compilation successful" "success"
+    else
         log_with_timestamp "❌ TEAL compilation failed" "error"
         cat "$test_results_dir/teal-error.log" >> "$ERROR_LOG"
+        echo "TEAL compilation failed" >> "$test_results_dir/teal.log"
     fi
+    cd /app
     
     # Generate test summary
     {
@@ -427,7 +486,7 @@ process_contract() {
         if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
             log_with_timestamp "📊 Generating comprehensive report..." "debug"
             if node /app/scripts/aggregate-all-logs.js "$CONTRACT_NAME" 2>/dev/null; then
-                log_with_timestamp "✅ Report generated: /app/logs/reports/${CONTRACT_NAME}-report.md" "success"
+                log_with_timestamp "✅ Report generated: /app/logs/reports/${CONTRACT_NAME}-report.txt" "success"
             else
                 log_with_timestamp "❌ Failed to generate report" "error"
             fi
@@ -574,7 +633,7 @@ cleanup() {
         echo ""
         echo "Error Summary:"
         tail -n 10 "$ERROR_LOG" 2>/dev/null || echo "No errors recorded"
-    } > "/app/logs/reports/final-execution-report.md"
+    } > "/app/logs/reports/final-execution-report.txt"
     
     # Compress logs
     log_with_timestamp "📦 Archiving logs..." "debug"

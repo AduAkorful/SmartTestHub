@@ -45,19 +45,28 @@ function aggregateDir(dir, filter = () => true) {
 
 let fullLog = '';
 // Docker process logs removed to reduce length - only tool-specific outputs included
-fullLog += section('Foundry Test Reports', aggregateDir('/app/logs/foundry', f => f.endsWith('.json') || f.endsWith('.txt')));
-fullLog += section('Foundry Coverage Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.info') || f.endsWith('.json') || f.endsWith('.txt')));
-fullLog += section('Slither Security Reports', aggregateDir('/app/logs/slither', f => f.endsWith('.txt') || f.endsWith('.json')));
-fullLog += section('AI Summaries and Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
-fullLog += section('Other Logs', aggregateDir('/app/logs', f => f.endsWith('.log') && !f.includes('evm-test.log')));
+// Aggregate logs with better organization
+fullLog += section('Foundry Test Reports', aggregateDir('/app/logs/foundry', f => f.startsWith(contractName) && (f.endsWith('.json') || f.endsWith('.txt'))));
+fullLog += section('Foundry Coverage Reports', aggregateDir('/app/logs/coverage', f => f.startsWith(contractName) && (f.endsWith('.info') || f.endsWith('.json') || f.endsWith('.txt'))));
+fullLog += section('Slither Security Reports', aggregateDir('/app/logs/slither', f => f.startsWith(contractName) && (f.endsWith('.txt') || f.endsWith('.json'))));
+fullLog += section('Mythril Security Reports', aggregateDir('/app/logs/slither', f => f.startsWith(contractName) && f.includes('mythril')));
+fullLog += section('AI Summaries and Reports', aggregateDir('/app/logs/reports', f => f.startsWith(contractName) && (f.endsWith('.md') || f.endsWith('.txt'))));
+fullLog += section('Other Analysis Logs', aggregateDir('/app/logs', f => f.startsWith(contractName) && f.endsWith('.log') && !f.includes('evm-test.log')));
 
 fullLog += section('Tool Run Confirmation', `
 The following tools' logs were aggregated for ${contractName}:
-- Testing: Foundry (all files in /app/logs/foundry starting with ${contractName}), coverage (all files in /app/logs/coverage starting with ${contractName})
-- Security: Slither (all files in /app/logs/slither starting with ${contractName})
-- AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
-- Other specific tool logs (excluding verbose container procedure logs)
-If any section above says "_No output found._", that log was missing or the tool did not run.
+- Testing: Foundry (test results, gas reports), Coverage analysis
+- Security: Slither (static analysis), Mythril (symbolic execution) 
+- Analysis: Contract size analysis, AI-powered code review
+- Reports: All generated summaries and detailed findings
+- Other: Container-specific analysis logs
+If any section above says "_No output found._", that tool was not available or did not run successfully.
+
+Analysis Quality Notes:
+- JSON outputs are parsed for structured data extraction
+- Text outputs provide human-readable details  
+- Multiple security tools ensure comprehensive coverage
+- Gas reporting provides performance insights
 `);
 
 const prompt = `
