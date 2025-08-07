@@ -29,13 +29,15 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && npm --version
 
 # Create a Python virtual environment and install security tools
-# Fix for numpy/distutils compatibility issues in modern Python
+# Use specific versions to avoid numpy/distutils compatibility issues
+# Cache bust: 2025-01-08-v2
 RUN python3 -m venv /opt/venv && \
     . /opt/venv/bin/activate && \
     pip install --upgrade pip setuptools wheel && \
-    pip install --upgrade setuptools-distutils && \
-    SETUPTOOLS_USE_DISTUTILS=stdlib pip install slither-analyzer && \
-    SETUPTOOLS_USE_DISTUTILS=stdlib pip install mythril && \
+    pip install numpy==1.24.4 && \
+    pip install crytic-compile==0.3.7 && \
+    pip install slither-analyzer==0.10.0 && \
+    pip install mythril==0.24.8 && \
     pip install solc-select && \
     echo 'source /opt/venv/bin/activate' >> /root/.bashrc
 
