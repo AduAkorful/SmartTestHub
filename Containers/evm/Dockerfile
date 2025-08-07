@@ -14,6 +14,9 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
+    python3-dev \
+    python3-distutils \
+    pkg-config \
     dos2unix \
     inotify-tools \
  && apt-get clean \
@@ -26,10 +29,14 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && npm --version
 
 # Create a Python virtual environment and install security tools
+# Fix for numpy/distutils compatibility issues in modern Python
 RUN python3 -m venv /opt/venv && \
     . /opt/venv/bin/activate && \
-    pip install --upgrade pip && \
-    pip install slither-analyzer mythril solc-select && \
+    pip install --upgrade pip setuptools wheel && \
+    pip install --upgrade setuptools-distutils && \
+    SETUPTOOLS_USE_DISTUTILS=stdlib pip install slither-analyzer && \
+    SETUPTOOLS_USE_DISTUTILS=stdlib pip install mythril && \
+    pip install solc-select && \
     echo 'source /opt/venv/bin/activate' >> /root/.bashrc
 
 # Add virtual environment to PATH
