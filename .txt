@@ -1,3 +1,0 @@
-Containers/non-evm-algorand/config/pytest.ini
-Containers/non-evm-algorand/requirements.txt
-Containers/non-evm-algorand/scripts/test_template.py
