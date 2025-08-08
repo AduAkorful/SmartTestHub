@@ -176,6 +176,17 @@ extract_entrypoint_function() {
     fi
 }
 
+# Extract Anchor program id from declare_id! macro if present
+extract_anchor_program_id() {
+    local file_path="$1"
+    # Look for declare_id!("<BASE58>"); and capture the base58 string
+    if grep -q "declare_id!" "$file_path"; then
+        grep -E "declare_id!\(\s*\"[1-9A-HJ-NP-Za-km-z]{32,44}\"\s*\)" "$file_path" \
+          | sed -E 's/.*declare_id!\(\s*\"([1-9A-HJ-NP-Za-km-z]{32,44})\"\s*\).*/\1/' \
+          | head -1
+    fi
+}
+
 # --- Incremental Dependency Caching Logic ---
 ensure_dependencies_available() {
     local cargo_toml="$1"
@@ -574,13 +585,22 @@ while read -r directory events filename; do
             log_with_timestamp "🔨 Building $contract_name ($project_type)..."
             case $project_type in
                 "anchor")
+                    # Try to extract a valid Anchor program id from source to avoid Base58 errors
+                    local anchor_pid=$(extract_anchor_program_id "$contracts_dir/src/lib.rs")
+                    if [ -z "$anchor_pid" ]; then
+                        # Fallback to a generated pubkey to satisfy Anchor CLI expectations
+                        anchor_pid=$(solana-keygen pubkey ~/.config/solana/id.json 2>/dev/null || echo "11111111111111111111111111111111")
+                        log_with_timestamp "⚠️ No declare_id! found. Using wallet pubkey as program id: $anchor_pid"
+                    else
+                        log_with_timestamp "🔑 Detected Anchor program id: $anchor_pid"
+                    fi
                     cat > "$contracts_dir/Anchor.toml" <<EOF
 [features]
 seed = false
 skip-lint = false
 
 [programs.localnet]
-$contract_name = "target/deploy/${contract_name}.so"
+$contract_name = "$anchor_pid"
 
 [registry]
 url = "https://api.apr.dev"
@@ -683,14 +703,22 @@ then
 
                 log_with_timestamp "🔨 Building $contract_name ($project_type)..."
                 case $project_type in
-                    "anchor")
+                "anchor")
+                        # Try to extract a valid Anchor program id from source to avoid Base58 errors
+                        local anchor_pid=$(extract_anchor_program_id "$contracts_dir/src/lib.rs")
+                        if [ -z "$anchor_pid" ]; then
+                            anchor_pid=$(solana-keygen pubkey ~/.config/solana/id.json 2>/dev/null || echo "11111111111111111111111111111111")
+                            log_with_timestamp "⚠️ No declare_id! found. Using wallet pubkey as program id: $anchor_pid"
+                        else
+                            log_with_timestamp "🔑 Detected Anchor program id: $anchor_pid"
+                        fi
                         cat > "$contracts_dir/Anchor.toml" <<EOF
 [features]
 seed = false
 skip-lint = false
 
 [programs.localnet]
-$contract_name = "target/deploy/${contract_name}.so"
+$contract_name = "$anchor_pid"
 
 [registry]
 url = "https://api.apr.dev"
