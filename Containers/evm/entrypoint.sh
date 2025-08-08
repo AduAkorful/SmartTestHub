@@ -22,6 +22,18 @@ command -v myth >/dev/null 2>&1 && echo "✅ Mythril available" || echo "⚠️ 
 command -v solc >/dev/null 2>&1 && echo "✅ Solidity compiler available" || echo "⚠️ Solc not found"
 command -v node >/dev/null 2>&1 && echo "✅ Node.js available" || echo "⚠️ Node.js not found"
 
+# Clean slate initialization - remove ALL cached artifacts and tool caches
+rm -rf /app/cache /app/cache_forge /app/artifacts /app/out /app/broadcast 2>/dev/null || true
+rm -rf /app/test/*.t.sol 2>/dev/null || true
+# Clear all tool caches globally
+rm -rf ~/.slither_cache /tmp/slither_cache ~/.mythril /tmp/mythril_cache 2>/dev/null || true
+rm -rf ~/.hardhat ~/.npm ~/.solidity ~/.foundry/cache 2>/dev/null || true
+# Clear Node.js caches
+npm cache clean --force 2>/dev/null || true
+# Disable environment-level caching
+export SLITHER_DISABLE_CACHE=1
+export HARDHAT_DISABLE_CACHE=1
+
 mkdir -p /app/input
 mkdir -p /app/logs
 mkdir -p /app/contracts
@@ -33,6 +45,8 @@ mkdir -p /app/logs/foundry
 mkdir -p /app/logs/reports
 mkdir -p /app/config
 mkdir -p /app/scripts
+mkdir -p /app/cache
+mkdir -p /app/artifacts
 
 LOG_FILE="/app/logs/evm-test.log"
 : > "$LOG_FILE"
@@ -315,10 +329,16 @@ EOF
         log_with_timestamp "⚠️ Direct compilation had issues, continuing with analysis"
       fi
 
-      # ==== CLEAN UP OLD TEST FILES ====
-      log_with_timestamp "🧹 Cleaning up previous test artifacts..."
-      # Remove any old test files that might cause import issues
-      find ./test -name "*.t.sol" -not -name "${contract_name}.t.sol" -type f -exec rm -f {} \; 2>/dev/null || true
+      # ==== CLEAN UP OLD TEST FILES AND CACHE ====
+      log_with_timestamp "🧹 Cleaning up previous test artifacts and cache..."
+      # Remove ALL old test files and cache to prevent contamination
+      rm -rf ./test/*.t.sol 2>/dev/null || true
+      rm -rf ./cache ./cache_forge ./artifacts ./out 2>/dev/null || true
+      rm -rf ./broadcast ./lib/cache 2>/dev/null || true
+      # Clear foundry cache completely
+      forge clean 2>/dev/null || true
+      # Recreate directories
+      mkdir -p ./test ./cache ./artifacts
       
       # ==== TAGGED LOG OUTPUTS ====
       log_with_timestamp "🧪 Running Foundry tests with gas reporting..."
@@ -327,8 +347,8 @@ EOF
         forge init --force --no-git --template foundry-rs/forge-template . 2>/dev/null || true
       fi
       
-      # Run tests with better error handling
-      if forge test --match-contract "${detected_name}Test" --gas-report --json > ./logs/foundry/${contract_name}-foundry-test-report.json 2>&1; then
+      # Run tests with better error handling - force fresh compilation
+      if forge test --match-contract "${detected_name}Test" --gas-report --json --force > ./logs/foundry/${contract_name}-foundry-test-report.json 2>&1; then
         log_with_timestamp "✅ Foundry tests passed with gas report"
         # Also create a readable text version
         forge test --match-contract "${detected_name}Test" --gas-report > ./logs/foundry/${contract_name}-foundry-test-readable.txt 2>&1 || true
@@ -354,7 +374,10 @@ EOF
 
       log_with_timestamp "🛡️ Running Slither security analysis..."
       if command -v slither &> /dev/null; then
-        if slither "$contract_path" --solc solc --json > "./logs/slither/${contract_name}-report.json" 2>&1; then
+        # Clear Slither cache before analysis
+        rm -rf ~/.slither_cache /tmp/slither_cache 2>/dev/null || true
+        export SLITHER_DISABLE_CACHE=1
+        if slither "$contract_path" --solc solc --json --disable-color > "./logs/slither/${contract_name}-report.json" 2>&1; then
           log_with_timestamp "✅ Slither analysis completed"
           # Also create human-readable version
           slither "$contract_path" --solc solc > "./logs/slither/${contract_name}-report.txt" 2>&1 || true
@@ -368,8 +391,10 @@ EOF
 
       log_with_timestamp "🔮 Running Mythril security analysis..."
       if command -v myth &> /dev/null; then
-        # Run Mythril analysis with timeout
-        timeout 300 myth analyze "$contract_path" --solv 0.8.20 --execution-timeout 60 > "./logs/slither/${contract_name}-mythril.txt" 2>&1 && {
+        # Clear Mythril cache before analysis
+        rm -rf ~/.mythril /tmp/mythril_cache 2>/dev/null || true
+        # Run Mythril analysis with timeout and no cache
+        timeout 300 myth analyze "$contract_path" --solv 0.8.20 --execution-timeout 60 --no-onchain-storage-access > "./logs/slither/${contract_name}-mythril.txt" 2>&1 && {
           log_with_timestamp "✅ Mythril analysis completed"
         } || {
           log_with_timestamp "⚠️ Mythril analysis timed out or found issues"
@@ -377,7 +402,9 @@ EOF
       else
         log_with_timestamp "ℹ️ Mythril not available, installing..."
         pip3 install mythril > /dev/null 2>&1 && {
-          timeout 300 myth analyze "$contract_path" --solv 0.8.20 --execution-timeout 60 > "./logs/slither/${contract_name}-mythril.txt" 2>&1 && {
+          # Clear cache after install
+          rm -rf ~/.mythril /tmp/mythril_cache 2>/dev/null || true
+          timeout 300 myth analyze "$contract_path" --solv 0.8.20 --execution-timeout 60 --no-onchain-storage-access > "./logs/slither/${contract_name}-mythril.txt" 2>&1 && {
             log_with_timestamp "✅ Mythril analysis completed"
           } || {
             log_with_timestamp "⚠️ Mythril analysis had issues"
@@ -451,7 +478,10 @@ EOF
       log_with_timestamp "🏁 All EVM analysis complete for $filename"
       log_with_timestamp "=========================================="
 
-      log_with_timestamp "🤖 Starting AI-enhanced aggregation..."
+      # Clean up any old reports for this contract before generating new one
+      rm -f "/app/logs/reports/${contract_name}-report.txt" 2>/dev/null || true
+      
+      log_with_timestamp "🤖 Starting AI-enhanced aggregation for ${contract_name} ONLY..."
       if node /app/scripts/aggregate-all-logs.js "$contract_name" >> "$LOG_FILE" 2>&1; then
         log_with_timestamp "✅ AI-enhanced report generated: /app/logs/reports/${contract_name}-report.txt"
       else

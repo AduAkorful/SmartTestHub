@@ -257,7 +257,11 @@ run_comprehensive_tests() {
     
     log_with_timestamp "🔬 Running comprehensive test suite for $contract_name..."
     
-    # Setup test environment
+    # Setup test environment - CLEAR ALL PYTHON CACHES
+    rm -rf ~/.cache/pip __pycache__ .pytest_cache 2>/dev/null || true
+    find "$contracts_dir" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+    find "$contracts_dir" -name "*.pyc" -delete 2>/dev/null || true
+    export PYTHONDONTWRITEBYTECODE=1
     export PYTHONPATH="$contracts_dir/src:$PYTHONPATH"
     export CONTRACT_NAME="$contract_name"
     
@@ -430,10 +434,17 @@ watch_dir="/app/input"
 MARKER_DIR="/app/.processed"
 mkdir -p "$watch_dir" "$MARKER_DIR"
 
+# GLOBAL CACHE CLEANUP AT STARTUP
+rm -rf ~/.cache/pip ~/.cache/pytest __pycache__ .pytest_cache 2>/dev/null || true
+find /app -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+find /app -name "*.pyc" -delete 2>/dev/null || true
+export PYTHONDONTWRITEBYTECODE=1
+
 log_with_timestamp "🚀 Starting Enhanced Algorand Container v2.0..."
 log_with_timestamp "📡 Watching for PyTeal smart contract files in $watch_dir..."
 log_with_timestamp "👤 Current User: AduAkorful"
 log_with_timestamp "🕒 Start Time: 2025-07-24 19:41:24 UTC"
+log_with_timestamp "🧹 All Python caches cleared for fresh analysis"
 
 process_contract() {
     local file="$1"
@@ -461,6 +472,12 @@ process_contract() {
         
         log_with_timestamp "🔨 Setting up contract directory structure..." "debug"
         mkdir -p "$CONTRACTS_DIR/src" "$CONTRACTS_DIR/tests"
+        
+        # CLEAR ALL PYTHON CACHES BEFORE PROCESSING
+        rm -rf ~/.cache/pip __pycache__ .pytest_cache 2>/dev/null || true
+        find /app -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+        find /app -name "*.pyc" -delete 2>/dev/null || true
+        export PYTHONDONTWRITEBYTECODE=1
         
         # Copy contract and create necessary files
         cp "$file" "$CONTRACTS_DIR/src/contract.py"

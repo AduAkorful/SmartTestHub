@@ -36,9 +36,14 @@ function section(title, content) {
   return `\n\n## ${title}\n\n${content || '_No output found._'}`;
 }
 
-// Only aggregate logs for this contract
+// Only aggregate logs for this contract - STRICT filtering
 function aggregateDir(dir, filter = () => true) {
-  return tryList(dir, f => f.startsWith(contractName) && filter(f))
+  return tryList(dir, f => {
+    // STRICT: Only files that start with EXACT contract name and are current
+    const isExactMatch = f.startsWith(contractName + '-') || f.startsWith(contractName + '.');
+    const isCurrentFile = f.includes(contractName);
+    return isExactMatch && isCurrentFile && filter(f);
+  })
     .map(f => `### File: ${f}\n` + tryRead(path.join(dir, f)))
     .join('\n\n');
 }

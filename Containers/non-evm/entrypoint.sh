@@ -2,12 +2,19 @@
 set -e
 
 # --- Environment/parallelism setup ---
+# SMART CACHING: Keep dependency cache, clear build artifacts
 export RUSTC_WRAPPER=sccache
 export SCCACHE_CACHE_SIZE=${SCCACHE_CACHE_SIZE:-12G}
 export SCCACHE_DIR="/app/.cache/sccache"
 export CARGO_TARGET_DIR=/app/target
 export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-$(nproc)}
 export RUSTFLAGS="-C target-cpu=native"
+
+# SMART CACHE CLEANUP AT STARTUP: Keep dependencies, clear build artifacts
+rm -rf "$CARGO_TARGET_DIR" ~/.cache/solana/cli 2>/dev/null || true
+# Keep: ~/.cargo/registry ~/.cargo/git (for dependency caching)
+# Keep: $SCCACHE_DIR (for compilation caching)  
+mkdir -p "$SCCACHE_DIR" "$CARGO_TARGET_DIR"
 
 LOG_FILE="/app/logs/test.log"
 ERROR_LOG="/app/logs/error.log"
@@ -69,28 +76,39 @@ detect_project_type() {
     fi
 }
 
-# --- Dependency Build Caching Logic ---
-cargo_toml_changed() {
-    local new_cargo="$1"
-    local cache_cargo="$2"
-    if [ ! -f "$cache_cargo" ]; then
-        return 0
+# Extract entrypoint function name from native programs
+extract_entrypoint_function() {
+    local file_path="$1"
+    # Look for entrypoint!(function_name) pattern and extract any function name
+    if grep -q "entrypoint\!" "$file_path"; then
+        # Extract function name from entrypoint!(function_name)
+        local func_name=$(grep "entrypoint\!" "$file_path" | sed 's/.*entrypoint\!(\([^)]*\));.*/\1/' | tr -d ' ' | head -1)
+        if [ -n "$func_name" ] && [ "$func_name" != "entrypoint" ]; then
+            echo "$func_name"
+        else
+            echo "process_instruction"  # Fallback if extraction fails
+        fi
+    else
+        echo "process_instruction"  # Default fallback for no entrypoint
     fi
-    if ! cmp -s "$new_cargo" "$cache_cargo"; then
-        return 0
-    fi
-    return 1
 }
 
-fetch_new_dependencies() {
+# --- Incremental Dependency Caching Logic ---
+ensure_dependencies_available() {
     local cargo_toml="$1"
-    local cache_cargo="$2"
-    if cargo_toml_changed "$cargo_toml" "$cache_cargo"; then
-        log_with_timestamp "🔄 Cargo.toml changed, fetching new dependencies..."
-        cargo fetch
-        cp "$cargo_toml" "$cache_cargo"
+    log_with_timestamp "🔄 Ensuring dependencies are available (incremental fetch)..."
+    
+    # CARGO FETCH INTELLIGENCE:
+    # - Uses existing registry cache (~/.cargo/registry) 
+    # - Only downloads dependencies not already cached
+    # - Respects version constraints in Cargo.toml
+    # - Updates only what changed, keeps what's compatible
+    log_with_timestamp "📦 Cargo will leverage existing cache and fetch only missing dependencies"
+    
+    if cargo fetch 2>&1 | tee -a "$LOG_FILE"; then
+        log_with_timestamp "✅ Dependencies synchronized (leveraging cache + fetching missing)"
     else
-        log_with_timestamp "✅ No change to dependencies, skipping cargo fetch."
+        log_with_timestamp "⚠️ Some dependencies may have fetch issues" "warning"
     fi
 }
 
@@ -239,6 +257,9 @@ async fn test_${contract_name}_initialization() {
 EOF
             ;;
         "native")
+            # Extract the actual entrypoint function name
+            local entrypoint_func=$(extract_entrypoint_function "$contracts_dir/src/lib.rs")
+            log_with_timestamp "🔍 Detected entrypoint function: $entrypoint_func"
             cat > "$contracts_dir/tests/test_${contract_name}.rs" <<EOF
 use solana_program_test::*;
 use solana_sdk::pubkey::Pubkey;
@@ -250,7 +271,7 @@ async fn test_${contract_name}_basic() {
     let program_test = ProgramTest::new(
         "${contract_name}",
         program_id,
-        processor!(process_instruction),
+        processor!(${entrypoint_func}),
     );
     let (_banks_client, _payer, _recent_blockhash) = program_test.start().await;
     // Basic test that the program can be loaded and started
@@ -263,7 +284,7 @@ async fn test_${contract_name}_program_id() {
     let program_test = ProgramTest::new(
         "${contract_name}",
         program_id,
-        processor!(process_instruction),
+        processor!(${entrypoint_func}),
     );
     assert!(!program_id.to_bytes().iter().all(|&b| b == 0));
 }
@@ -293,7 +314,7 @@ setup_solana_environment
 
 watch_dir="/app/input"
 MARKER_DIR="/app/.processed"
-CACHE_CARGO_TOML="/app/.cached_Cargo.toml"
+# Removed CACHE_CARGO_TOML - no longer needed with incremental fetching
 mkdir -p "$watch_dir" "$MARKER_DIR"
 
 log_with_timestamp "🚀 Starting Enhanced Non-EVM (Solana) Container..."
@@ -325,8 +346,15 @@ while read -r directory events filename; do
             create_dynamic_cargo_toml "$contract_name" "$project_type"
             create_test_files "$contract_name" "$project_type"
 
-            # Check and fetch only new dependencies
-            fetch_new_dependencies "$contracts_dir/Cargo.toml" "$CACHE_CARGO_TOML"
+            # SMART CACHE: Clear build artifacts, keep dependencies
+            rm -rf "$CARGO_TARGET_DIR" "$contracts_dir/target" 2>/dev/null || true
+            mkdir -p "$CARGO_TARGET_DIR"
+            
+            # Keep sccache enabled for faster compilation
+            export RUSTC_WRAPPER=sccache
+            
+            # Incremental dependency management: let Cargo fetch only what's needed
+            ensure_dependencies_available "$contracts_dir/Cargo.toml"
 
             # Build step
             log_with_timestamp "🔨 Building $contract_name ($project_type)..."
@@ -361,7 +389,7 @@ EOF
                         log_with_timestamp "✅ Anchor build & tests successful"
                     else
                         log_with_timestamp "❌ Anchor build failed, trying cargo build..." "error"
-                        (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
+                        (cd "$contracts_dir" && cargo clean && cargo build 2>&1 | tee -a "$LOG_FILE")
                         if [ $? -eq 0 ]; then
                             log_with_timestamp "✅ Cargo build successful"
                             (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
@@ -429,7 +457,15 @@ then
                 create_dynamic_cargo_toml "$contract_name" "$project_type"
                 create_test_files "$contract_name" "$project_type"
 
-                fetch_new_dependencies "$contracts_dir/Cargo.toml" "$CACHE_CARGO_TOML"
+                # SMART CACHE: Clear build artifacts, keep dependencies  
+                rm -rf "$CARGO_TARGET_DIR" "$contracts_dir/target" 2>/dev/null || true
+                mkdir -p "$CARGO_TARGET_DIR"
+                
+                # Keep sccache enabled for faster compilation
+                export RUSTC_WRAPPER=sccache
+                
+                # Incremental dependency management: let Cargo fetch only what's needed
+                ensure_dependencies_available "$contracts_dir/Cargo.toml"
 
                 log_with_timestamp "🔨 Building $contract_name ($project_type)..."
                 case $project_type in
@@ -457,13 +493,15 @@ startup_wait = 5000
 shutdown_wait = 2000
 upgrade_wait = 1000
 EOF
-                        (cd "$contracts_dir" && anchor build 2>&1 | tee -a "$LOG_FILE")
+                                        # Clear Anchor build cache, keep CLI config
+                        rm -rf ~/.cache/solana/cli 2>/dev/null || true
+                        (cd "$contracts_dir" && anchor clean && anchor build 2>&1 | tee -a "$LOG_FILE")
                         if [ $? -eq 0 ]; then
                             (cd "$contracts_dir" && anchor test --skip-local-validator | tee -a "$LOG_FILE")
                             log_with_timestamp "✅ Anchor build & tests successful"
                         else
                             log_with_timestamp "❌ Anchor build failed, trying cargo build..." "error"
-                            (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
+                            (cd "$contracts_dir" && cargo clean && cargo build 2>&1 | tee -a "$LOG_FILE")
                             if [ $? -eq 0 ]; then
                                 log_with_timestamp "✅ Cargo build successful"
                                 (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
@@ -474,7 +512,7 @@ EOF
                         fi
                         ;;
                     *)
-                        (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
+                        (cd "$contracts_dir" && cargo clean && cargo build 2>&1 | tee -a "$LOG_FILE")
                         if [ $? -eq 0 ]; then
                             log_with_timestamp "✅ Build successful"
                             (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
