@@ -49,8 +49,11 @@ let fullLog = '';
 // Removed: Docker process logs (test.log) to reduce length
 fullLog += section('Security Audit (Cargo Audit)', aggregateDir('/app/logs/security', f => f.endsWith('-cargo-audit.log')));
 fullLog += section('Security Lint (Clippy)', aggregateDir('/app/logs/security', f => f.endsWith('-clippy.log')));
-fullLog += section('Coverage Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.html')));
-fullLog += section('Performance Benchmarks', aggregateDir('/app/logs/benchmarks', () => true));
+fullLog += section('Coverage Reports (Tarpaulin)', aggregateDir('/app/logs/coverage', f => f.endsWith('-coverage.log')));
+fullLog += section('Coverage HTML Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.html')));
+fullLog += section('Performance Benchmarks', aggregateDir('/app/logs/benchmarks', f => f.endsWith('-benchmarks.log')));
+fullLog += section('Binary Size Analysis', aggregateDir('/app/logs/analysis', f => f.endsWith('-binary-size.log')));
+fullLog += section('Comprehensive Summary', aggregateDir('/app/logs/reports', f => f.endsWith('-summary.log')));
 fullLog += section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
 
 fullLog += section('Tool Run Confirmation', `
