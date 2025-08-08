@@ -1,5 +1,0 @@
-[33m9efa9ab[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Fix EVM Python dependencies with specific versions and cache bust
-[33md4ef8d9[m Fix EVM container Python dependency build issues
-[33m39c2f95[m Fix container issues and standardize report outputs
-[33ma6e199b[m Fix Algorand container configuration issues
-[33m939cc54[m Optimize AI report generation: remove verbose logs and change output to .txt format
