@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set -o pipefail
 
 # --- Environment/parallelism setup ---
 # SMART CACHING: Keep dependency cache, clear build artifacts
@@ -619,14 +620,14 @@ upgrade_wait = 1000
 EOF
                     (cd "$contracts_dir" && anchor build 2>&1 | tee -a "$LOG_FILE")
                     if [ $? -eq 0 ]; then
-                        (cd "$contracts_dir" && anchor test --skip-local-validator | tee -a "$LOG_FILE")
+                        (cd "$contracts_dir" && RUST_BACKTRACE=1 anchor test --skip-local-validator -- --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-anchor-test.log" >/dev/null)
                         log_with_timestamp "✅ Anchor build & tests successful"
                     else
                         log_with_timestamp "❌ Anchor build failed, trying cargo build..." "error"
                         (cd "$contracts_dir" && cargo clean && cargo build 2>&1 | tee -a "$LOG_FILE")
                         if [ $? -eq 0 ]; then
                             log_with_timestamp "✅ Cargo build successful"
-                            (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
+                            (cd "$contracts_dir" && RUST_BACKTRACE=1 cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-cargo-test.log" >/dev/null)
                         else
                             log_with_timestamp "❌ All builds failed for $contract_name" "error"
                             continue
@@ -637,7 +638,7 @@ EOF
                     (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
                     if [ $? -eq 0 ]; then
                         log_with_timestamp "✅ Build successful"
-                        (cd "$contracts_dir" && cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" | tee -a "$LOG_FILE")
+                        (cd "$contracts_dir" && RUST_BACKTRACE=1 cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-cargo-test.log" >/dev/null)
                     else
                         log_with_timestamp "❌ Build failed for $contract_name" "error"
                         continue
@@ -648,6 +649,7 @@ EOF
             # Security, performance, coverage, report generation (outside contract dir for global logs)
             run_security_audit "$contract_name"
             run_performance_analysis "$contract_name"
+            run_coverage_analysis "$contract_name"
             end_time=$(date +%s)
             generate_comprehensive_report "$contract_name" "$project_type" "$start_time" "$end_time"
             log_with_timestamp "🏁 Completed processing $filename"
