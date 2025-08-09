@@ -21,6 +21,9 @@ mkdir -p "$LOCK_CACHE_DIR"
 export RUN_AUDIT="${RUN_AUDIT:-0}"
 export RUN_BENCHMARKS="${RUN_BENCHMARKS:-0}"
 export RUN_COVERAGE="${RUN_COVERAGE:-0}"
+export RUN_TESTS_RELEASE="${RUN_TESTS_RELEASE:-0}"
+export FORCE_COVERAGE="${FORCE_COVERAGE:-0}"
+LAST_TESTS_PASSED=0
 
 # One-time baseline Cargo.lock generator for Solana 2.x
 generate_baseline_lock_if_needed() {
@@ -143,6 +146,10 @@ run_coverage_analysis() {
         log_with_timestamp "⏭️ Skipping coverage (RUN_COVERAGE=0)"
         return 0
     fi
+    if [ "$FORCE_COVERAGE" != "1" ] && [ "$LAST_TESTS_PASSED" != "1" ]; then
+        log_with_timestamp "⏭️ Skipping coverage because tests did not pass (set FORCE_COVERAGE=1 to override)"
+        return 0
+    fi
     log_with_timestamp "📊 Running coverage analysis for $contract_name..."
     
     # Run cargo tarpaulin for coverage
@@ -164,6 +171,20 @@ generate_comprehensive_report() {
     log_with_timestamp "📝 Generating comprehensive report for $contract_name..."
     
     local report_file="/app/logs/reports/${contract_name}-summary.log"
+    local test_log_cargo="/app/logs/reports/${contract_name}-cargo-test.log"
+    local test_log_anchor="/app/logs/reports/${contract_name}-anchor-test.log"
+    local test_status="SKIPPED"
+    if [ -f "$test_log_cargo" ] || [ -f "$test_log_anchor" ]; then
+        local combined_test_log
+        combined_test_log=$(cat "$test_log_cargo" 2>/dev/null; cat "$test_log_anchor" 2>/dev/null)
+        if echo "$combined_test_log" | grep -Eiq "test result:\s*ok|0 failed|\bok\b.*tests"; then
+            test_status="PASSED"
+        elif echo "$combined_test_log" | grep -Eiq "FAILED|error:\s*test"; then
+            test_status="FAILED"
+        else
+            test_status="UNKNOWN"
+        fi
+    fi
     
     cat > "$report_file" << EOF
 === COMPREHENSIVE ANALYSIS REPORT ===
@@ -173,7 +194,7 @@ Analysis Duration: ${duration}s
 Timestamp: $(date)
 
 Build Status: $(grep -q "✅.*successful" "$LOG_FILE" && echo "SUCCESS" || echo "FAILED")
-Test Status: $(grep -q "test result: ok" "$LOG_FILE" && echo "PASSED" || echo "FAILED")
+Test Status: $test_status
 
 Security Tools:
 - Cargo Audit: $([ -f "/app/logs/security/${contract_name}-cargo-audit.log" ] && echo "COMPLETED" || echo "SKIPPED")
@@ -254,6 +275,8 @@ extract_anchor_program_id() {
 # --- Incremental Dependency Caching Logic ---
 ensure_dependencies_available() {
     local cargo_toml="$1"
+    local project_dir
+    project_dir="$(dirname "$cargo_toml")"
     log_with_timestamp "🔄 Ensuring dependencies are available (incremental fetch)..."
     
     # CARGO FETCH INTELLIGENCE:
@@ -263,7 +286,7 @@ ensure_dependencies_available() {
     # - Updates only what changed, keeps what's compatible
     log_with_timestamp "📦 Cargo will leverage existing cache and fetch only missing dependencies"
     
-    if cargo fetch 2>&1 | tee -a "$LOG_FILE"; then
+    if (cd "$project_dir" && cargo fetch) 2>&1 | tee -a "$LOG_FILE"; then
         log_with_timestamp "✅ Dependencies synchronized (leveraging cache + fetching missing)"
     else
         log_with_timestamp "⚠️ Some dependencies may have fetch issues" "warning"
@@ -412,7 +435,10 @@ crate-type = ["cdylib", "lib"]
 
 # Suppress Solana-specific warnings during development
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(target_os, values("solana"))',
+    'cfg(feature, values("no-entrypoint", "test-sbf", "custom-heap", "custom-panic"))'
+] }
 EOF
 
     # Analyze contract source to determine needed dependencies
@@ -698,14 +724,30 @@ upgrade_wait = 1000
 EOF
                     (cd "$contracts_dir" && anchor build 2>&1 | tee -a "$LOG_FILE")
                     if [ $? -eq 0 ]; then
-                        (cd "$contracts_dir" && RUST_BACKTRACE=1 anchor test --skip-local-validator -- --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-anchor-test.log" >/dev/null)
+                        log_with_timestamp "🧪 Running Anchor tests..."
+                        (cd "$contracts_dir" && RUST_BACKTRACE=1 anchor test --skip-local-validator -- --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-anchor-test.log")
+                        if grep -Eiq "test result:\s*ok|0 failed|\bok\b.*tests" "/app/logs/reports/${contract_name}-anchor-test.log"; then
+                            LAST_TESTS_PASSED=1
+                        else
+                            LAST_TESTS_PASSED=0
+                        fi
                         log_with_timestamp "✅ Anchor build & tests successful"
                     else
                         log_with_timestamp "❌ Anchor build failed, trying cargo build..." "error"
                         (cd "$contracts_dir" && cargo clean && cargo build 2>&1 | tee -a "$LOG_FILE")
                         if [ $? -eq 0 ]; then
                             log_with_timestamp "✅ Cargo build successful"
-                            (cd "$contracts_dir" && RUST_BACKTRACE=1 cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-cargo-test.log" >/dev/null)
+                            log_with_timestamp "🧪 Running cargo tests..."
+                            if [ "$RUN_TESTS_RELEASE" = "1" ]; then
+                                (cd "$contracts_dir" && RUST_BACKTRACE=1 cargo test --release -- --test-threads=1 --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-cargo-test.log")
+                            else
+                                (cd "$contracts_dir" && RUST_BACKTRACE=1 cargo test -- --test-threads=1 --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-cargo-test.log")
+                            fi
+                            if grep -Eiq "test result:\s*ok|0 failed|\bok\b.*tests" "/app/logs/reports/${contract_name}-cargo-test.log"; then
+                                LAST_TESTS_PASSED=1
+                            else
+                                LAST_TESTS_PASSED=0
+                            fi
                         else
                             log_with_timestamp "❌ All builds failed for $contract_name" "error"
                             continue
@@ -716,7 +758,17 @@ EOF
                     (cd "$contracts_dir" && cargo build 2>&1 | tee -a "$LOG_FILE")
                     if [ $? -eq 0 ]; then
                         log_with_timestamp "✅ Build successful"
-                        (cd "$contracts_dir" && RUST_BACKTRACE=1 cargo test --release -- --test-threads="${CARGO_BUILD_JOBS}" --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-cargo-test.log" >/dev/null)
+                        log_with_timestamp "🧪 Running cargo tests..."
+                        if [ "$RUN_TESTS_RELEASE" = "1" ]; then
+                            (cd "$contracts_dir" && RUST_BACKTRACE=1 cargo test --release -- --test-threads=1 --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-cargo-test.log")
+                        else
+                            (cd "$contracts_dir" && RUST_BACKTRACE=1 cargo test -- --test-threads=1 --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-cargo-test.log")
+                        fi
+                        if grep -Eiq "test result:\s*ok|0 failed|\bok\b.*tests" "/app/logs/reports/${contract_name}-cargo-test.log"; then
+                            LAST_TESTS_PASSED=1
+                        else
+                            LAST_TESTS_PASSED=0
+                        fi
                     else
                         log_with_timestamp "❌ Build failed for $contract_name" "error"
                         continue

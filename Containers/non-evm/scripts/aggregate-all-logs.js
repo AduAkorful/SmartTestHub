@@ -43,14 +43,48 @@ function aggregateDir(dir, filter = () => true) {
     .join('\n\n');
 }
 
+function aggregateTestResults() {
+  const dir = '/app/logs/reports';
+  const files = [
+    `${contractName}-cargo-test.log`,
+    `${contractName}-anchor-test.log`
+  ];
+  const contents = files
+    .map(f => path.join(dir, f))
+    .filter(p => fs.existsSync(p))
+    .map(p => `### File: ${path.basename(p)}\n` + tryRead(p))
+    .join('\n\n');
+  return contents || '_No output found._';
+}
+
+function aggregateCoverage() {
+  const dir = '/app/logs/coverage';
+  const candidates = [
+    `${contractName}-coverage.log`,
+    `${contractName}-coverage.html`,
+    `${contractName}-coverage.xml`,
+    `${contractName}-lcov.info`,
+    // fallback names used by tarpaulin
+    'tarpaulin-report.html',
+    'cobertura.xml',
+    'lcov.info'
+  ];
+  const contents = candidates
+    .map(f => path.join(dir, f))
+    .filter(p => fs.existsSync(p))
+    .map(p => `### File: ${path.basename(p)}\n` + tryRead(p))
+    .join('\n\n');
+  return contents || '_No output found._';
+}
+
 const mainReportNote = `Note: After aggregation, only the main AI-enhanced report (${contractName}-report.txt) is retained in /app/logs/reports and /app/contracts/${contractName} for this contract.`;
 
 let fullLog = '';
 // Removed: Docker process logs (test.log) to reduce length
 fullLog += section('Security Audit (Cargo Audit)', aggregateDir('/app/logs/security', f => f.endsWith('-cargo-audit.log')));
 fullLog += section('Security Lint (Clippy)', aggregateDir('/app/logs/security', f => f.endsWith('-clippy.log')));
-fullLog += section('Coverage Reports (Tarpaulin)', aggregateDir('/app/logs/coverage', f => f.endsWith('-coverage.log')));
-fullLog += section('Coverage HTML Reports', aggregateDir('/app/logs/coverage', f => f.endsWith('.html')));
+fullLog += section('Test Results', aggregateTestResults());
+fullLog += section('Coverage Reports (Tarpaulin)', aggregateCoverage());
 fullLog += section('Performance Benchmarks', aggregateDir('/app/logs/benchmarks', f => f.endsWith('-benchmarks.log')));
 fullLog += section('Binary Size Analysis', aggregateDir('/app/logs/analysis', f => f.endsWith('-binary-size.log')));
 fullLog += section('Comprehensive Summary', aggregateDir('/app/logs/reports', f => f.endsWith('-summary.log')));
