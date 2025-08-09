@@ -361,7 +361,7 @@ EOF
 
 [dependencies]
 anchor-lang = "0.29.0"
-solana-program = "1.18.29"
+# Note: anchor-lang pins compatible Solana crates; avoid adding explicit solana-program here to prevent version conflicts
 EOF
             # Add optional dependencies based on usage
             add_conditional_dependencies "$contracts_dir/src/lib.rs"
@@ -370,7 +370,8 @@ EOF
             cat >> "$contracts_dir/Cargo.toml" <<EOF
 
 [dependencies]
-solana-program = "1.18.29"
+solana-program = "2"
+solana-sdk = "2"
 EOF
             # Add only dependencies that are actually used
             add_conditional_dependencies "$contracts_dir/src/lib.rs"
@@ -379,7 +380,8 @@ EOF
             cat >> "$contracts_dir/Cargo.toml" <<EOF
 
 [dependencies]
-solana-program = "1.18.29"
+solana-program = "2"
+solana-sdk = "2"
 EOF
             # Minimal dependencies for unknown project types
             add_conditional_dependencies "$contracts_dir/src/lib.rs"
@@ -388,7 +390,7 @@ EOF
     cat >> "$contracts_dir/Cargo.toml" <<EOF
 
 [dev-dependencies]
-solana-program-test = "1.18.29"
+solana-program-test = "2"
 tokio = { version = "1.0", features = ["macros", "rt"] }
 
 [features]
