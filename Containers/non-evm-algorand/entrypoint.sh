@@ -263,7 +263,8 @@ run_comprehensive_tests() {
     find "$contracts_dir" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
     find "$contracts_dir" -name "*.pyc" -delete 2>/dev/null || true
     export PYTHONDONTWRITEBYTECODE=1
-    export PYTHONPATH="$contracts_dir/src:$PYTHONPATH"
+    # Make root and src importable to fix relative import issues in user code
+    export PYTHONPATH="$contracts_dir:$contracts_dir/src:/app/contracts:$PYTHONPATH"
     export CONTRACT_NAME="$contract_name"
     
     # Create test result directory
@@ -482,6 +483,8 @@ process_contract() {
         
         # Copy contract and create necessary files
         cp "$file" "$CONTRACTS_DIR/src/contract.py"
+        # Ensure package structure for relative imports
+        touch "$CONTRACTS_DIR/__init__.py"
         touch "$CONTRACTS_DIR/src/__init__.py"
         touch "$CONTRACTS_DIR/tests/__init__.py"
         
