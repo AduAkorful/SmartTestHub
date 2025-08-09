@@ -380,10 +380,10 @@ EOF
           log_with_timestamp "⚠️ No tests matched filter; retrying without match-contract"
           forge test --gas-report --json --force > ./logs/foundry/${contract_name}-foundry-test-report.json 2>&1 || true
           forge test --gas-report > ./logs/foundry/${contract_name}-foundry-test-readable.txt 2>&1 || true
-        else
-          log_with_timestamp "❌ Foundry tests failed - check logs/foundry/${contract_name}-foundry-test-report.json"
-          # Try to get more detailed error info
-          forge test --match-contract "${detected_name}Test" -vvv > ./logs/foundry/${contract_name}-foundry-error-verbose.txt 2>&1 || true
+      else
+        log_with_timestamp "❌ Foundry tests failed - check logs/foundry/${contract_name}-foundry-test-report.json"
+        # Try to get more detailed error info
+        forge test --match-contract "${detected_name}Test" -vvv > ./logs/foundry/${contract_name}-foundry-error-verbose.txt 2>&1 || true
         fi
       fi
 

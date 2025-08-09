@@ -17,6 +17,11 @@ export CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 LOCK_CACHE_DIR="/app/.cargo-lock-cache"
 mkdir -p "$LOCK_CACHE_DIR"
 
+# Feature toggles (default off for faster dev loops). Enable in CI as needed.
+export RUN_AUDIT="${RUN_AUDIT:-0}"
+export RUN_BENCHMARKS="${RUN_BENCHMARKS:-0}"
+export RUN_COVERAGE="${RUN_COVERAGE:-0}"
+
 # One-time baseline Cargo.lock generator for Solana 2.x
 generate_baseline_lock_if_needed() {
     local baseline_lock="$LOCK_CACHE_DIR/solana-2.lock"
@@ -26,7 +31,7 @@ generate_baseline_lock_if_needed() {
     log_with_timestamp "🔒 Generating baseline Cargo.lock for Solana 2.x (one-time)"
     (
       set -e
-      mkdir -p /app/_lock_seed && cd /app/_lock_seed
+      mkdir -p /tmp/_lock_seed && cd /tmp/_lock_seed
       cat > Cargo.toml <<EOF
 [package]
 name = "lock_seed"
@@ -49,7 +54,7 @@ EOF
       cargo generate-lockfile || cargo fetch
       cp Cargo.lock "$baseline_lock" 2>/dev/null || true
     ) || log_with_timestamp "⚠️ Baseline lock generation encountered issues" "warning"
-    rm -rf /app/_lock_seed 2>/dev/null || true
+    rm -rf /tmp/_lock_seed 2>/dev/null || true
     if [ -f "$baseline_lock" ]; then
         log_with_timestamp "✅ Baseline Cargo.lock created at $baseline_lock"
     else
@@ -89,6 +94,10 @@ log_with_timestamp() {
 # Security audit implementation
 run_security_audit() {
     local contract_name="$1"
+    if [ "$RUN_AUDIT" != "1" ]; then
+        log_with_timestamp "⏭️ Skipping security audit (RUN_AUDIT=0)" "security"
+        return 0
+    fi
     log_with_timestamp "🛡️ Running security audit for $contract_name..." "security"
     
     # Run cargo audit
@@ -107,6 +116,10 @@ run_security_audit() {
 # Performance analysis implementation
 run_performance_analysis() {
     local contract_name="$1"
+    if [ "$RUN_BENCHMARKS" != "1" ]; then
+        log_with_timestamp "⏭️ Skipping benchmarks (RUN_BENCHMARKS=0)" "performance"
+        return 0
+    fi
     log_with_timestamp "⚡ Running performance analysis for $contract_name..." "performance"
     
     # Run cargo benchmarks if available
@@ -126,6 +139,10 @@ run_performance_analysis() {
 # Coverage analysis implementation
 run_coverage_analysis() {
     local contract_name="$1"
+    if [ "$RUN_COVERAGE" != "1" ]; then
+        log_with_timestamp "⏭️ Skipping coverage (RUN_COVERAGE=0)"
+        return 0
+    fi
     log_with_timestamp "📊 Running coverage analysis for $contract_name..."
     
     # Run cargo tarpaulin for coverage
@@ -766,7 +783,7 @@ then
 
                 log_with_timestamp "🔨 Building $contract_name ($project_type)..."
                 case $project_type in
-                "anchor")
+                    "anchor")
                         # Try to extract a valid Anchor program id from source to avoid Base58 errors
                         local anchor_pid=$(extract_anchor_program_id "$contracts_dir/src/lib.rs")
                         if [ -z "$anchor_pid" ]; then

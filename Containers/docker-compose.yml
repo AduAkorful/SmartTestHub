@@ -63,6 +63,8 @@ services:
       - CARGO_TARGET_DIR=/app/target
       - ANCHOR_WALLET=/root/.config/solana/id.json
       - SOLANA_VERSION=1.18.25
+      - RUN_COVERAGE=1
+      - RUN_AUDIT=1
     env_file:
       - .env
     depends_on:
