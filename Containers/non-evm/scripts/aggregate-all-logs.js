@@ -47,7 +47,8 @@ function aggregateTestResults() {
   const dir = '/app/logs/reports';
   const files = [
     `${contractName}-cargo-test.log`,
-    `${contractName}-anchor-test.log`
+    `${contractName}-anchor-test.log`,
+    `${contractName}-pytest.log`
   ];
   const contents = files
     .map(f => path.join(dir, f))
