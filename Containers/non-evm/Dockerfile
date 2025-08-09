@@ -35,7 +35,8 @@ RUN solana --version
 RUN cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked && \
     cargo install cargo-tarpaulin --locked && \
     cargo install cargo-audit --locked && \
-    rustup component add clippy
+    rustup component add clippy llvm-tools-preview && \
+    cargo install cargo-llvm-cov --locked
 
 # Install node dependencies for log aggregation (no package.json required)
 WORKDIR /app/scripts

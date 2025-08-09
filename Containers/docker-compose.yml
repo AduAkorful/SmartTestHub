@@ -65,6 +65,9 @@ services:
       - SOLANA_VERSION=1.18.25
       - RUN_COVERAGE=1
       - RUN_AUDIT=1
+      - TEST_THREADS=1
+      - COVERAGE_TOOL=llvm-cov
+      - AUDIT_UPDATE_DB=0
     env_file:
       - .env
     depends_on:

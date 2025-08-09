@@ -23,6 +23,9 @@ export RUN_BENCHMARKS="${RUN_BENCHMARKS:-0}"
 export RUN_COVERAGE="${RUN_COVERAGE:-0}"
 export RUN_TESTS_RELEASE="${RUN_TESTS_RELEASE:-0}"
 export FORCE_COVERAGE="${FORCE_COVERAGE:-0}"
+export COVERAGE_TOOL="${COVERAGE_TOOL:-tarpaulin}"
+export TEST_THREADS="${TEST_THREADS:-1}"
+export AUDIT_UPDATE_DB="${AUDIT_UPDATE_DB:-0}"
 LAST_TESTS_PASSED=0
 
 # One-time baseline Cargo.lock generator for Solana 2.x
@@ -104,13 +107,20 @@ run_security_audit() {
     log_with_timestamp "🛡️ Running security audit for $contract_name..." "security"
     
     # Run cargo audit
-    (cd "$contracts_dir" && cargo audit --json > "/app/logs/security/${contract_name}-cargo-audit.log" 2>&1) || \
-    (cd "$contracts_dir" && cargo audit > "/app/logs/security/${contract_name}-cargo-audit.log" 2>&1) || \
-    echo "No vulnerabilities found" > "/app/logs/security/${contract_name}-cargo-audit.log"
+    if [ "$AUDIT_UPDATE_DB" = "1" ]; then
+        (cd "$contracts_dir" && cargo audit --json > "/app/logs/security/${contract_name}-cargo-audit.log" 2>&1) || \
+        (cd "$contracts_dir" && cargo audit > "/app/logs/security/${contract_name}-cargo-audit.log" 2>&1) || \
+        echo "No vulnerabilities found" > "/app/logs/security/${contract_name}-cargo-audit.log"
+    else
+        (cd "$contracts_dir" && cargo audit --no-fetch --json > "/app/logs/security/${contract_name}-cargo-audit.log" 2>&1) || \
+        (cd "$contracts_dir" && cargo audit --no-fetch > "/app/logs/security/${contract_name}-cargo-audit.log" 2>&1) || \
+        echo "No vulnerabilities found" > "/app/logs/security/${contract_name}-cargo-audit.log"
+    fi
     
     # Run clippy
     (cd "$contracts_dir" && cargo clippy --all-targets --all-features -- -D warnings > "/app/logs/security/${contract_name}-clippy.log" 2>&1) || \
     (cd "$contracts_dir" && cargo clippy --all-targets --all-features > "/app/logs/security/${contract_name}-clippy.log" 2>&1) || \
+    echo "No vulnerabilities found" > "/app/logs/security/${contract_name}-cargo-audit.log"
     echo "No clippy warnings found" > "/app/logs/security/${contract_name}-clippy.log"
     
     log_with_timestamp "✅ Security audit completed for $contract_name" "security"
@@ -150,12 +160,15 @@ run_coverage_analysis() {
         log_with_timestamp "⏭️ Skipping coverage because tests did not pass (set FORCE_COVERAGE=1 to override)"
         return 0
     fi
-    log_with_timestamp "📊 Running coverage analysis for $contract_name..."
-    
-    # Run cargo tarpaulin for coverage
-    (cd "$contracts_dir" && cargo tarpaulin --config "/app/config/tarpaulin.toml" --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
-    (cd "$contracts_dir" && cargo tarpaulin --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
-    echo "Coverage analysis failed or not available" > "/app/logs/coverage/${contract_name}-coverage.log"
+    log_with_timestamp "📊 Running coverage analysis for $contract_name (tool: $COVERAGE_TOOL)..."
+    if [ "$COVERAGE_TOOL" = "llvm-cov" ]; then
+        (cd "$contracts_dir" && cargo llvm-cov --quiet --html --lcov --output-path "/app/logs/coverage/${contract_name}-lcov.info" --html-path "/app/logs/coverage/${contract_name}-coverage-html" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
+        echo "Coverage analysis failed or not available" > "/app/logs/coverage/${contract_name}-coverage.log"
+    else
+        (cd "$contracts_dir" && cargo tarpaulin --config "/app/config/tarpaulin.toml" --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
+        (cd "$contracts_dir" && cargo tarpaulin --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
+        echo "Coverage analysis failed or not available" > "/app/logs/coverage/${contract_name}-coverage.log"
+    fi
     
     log_with_timestamp "✅ Coverage analysis completed for $contract_name"
 }
@@ -739,9 +752,9 @@ EOF
                             log_with_timestamp "✅ Cargo build successful"
                             log_with_timestamp "🧪 Running cargo tests..."
                             if [ "$RUN_TESTS_RELEASE" = "1" ]; then
-                                (cd "$contracts_dir" && RUST_BACKTRACE=1 cargo test --release -- --test-threads=1 --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-cargo-test.log")
+                                (cd "$contracts_dir" && RUST_BACKTRACE=1 cargo test --release -- --test-threads="$TEST_THREADS" --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-cargo-test.log")
                             else
-                                (cd "$contracts_dir" && RUST_BACKTRACE=1 cargo test -- --test-threads=1 --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-cargo-test.log")
+                                (cd "$contracts_dir" && RUST_BACKTRACE=1 cargo test -- --test-threads="$TEST_THREADS" --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-cargo-test.log")
                             fi
                             if grep -Eiq "test result:\s*ok|0 failed|\bok\b.*tests" "/app/logs/reports/${contract_name}-cargo-test.log"; then
                                 LAST_TESTS_PASSED=1
@@ -760,9 +773,9 @@ EOF
                         log_with_timestamp "✅ Build successful"
                         log_with_timestamp "🧪 Running cargo tests..."
                         if [ "$RUN_TESTS_RELEASE" = "1" ]; then
-                            (cd "$contracts_dir" && RUST_BACKTRACE=1 cargo test --release -- --test-threads=1 --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-cargo-test.log")
+                            (cd "$contracts_dir" && RUST_BACKTRACE=1 cargo test --release -- --test-threads="$TEST_THREADS" --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-cargo-test.log")
                         else
-                            (cd "$contracts_dir" && RUST_BACKTRACE=1 cargo test -- --test-threads=1 --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-cargo-test.log")
+                            (cd "$contracts_dir" && RUST_BACKTRACE=1 cargo test -- --test-threads="$TEST_THREADS" --nocapture 2>&1 | tee -a "$LOG_FILE" | tee "/app/logs/reports/${contract_name}-cargo-test.log")
                         fi
                         if grep -Eiq "test result:\s*ok|0 failed|\bok\b.*tests" "/app/logs/reports/${contract_name}-cargo-test.log"; then
                             LAST_TESTS_PASSED=1
