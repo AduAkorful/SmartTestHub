@@ -22,7 +22,8 @@ RUN cd /app/scripts && npm install
 COPY src ./src
 COPY tests ./tests
 COPY config ./config
-COPY scripts/aggregate-all-logs.js ./scripts/
+# Ensure all helper scripts (including test generator) are available in the container
+COPY scripts/ ./scripts/
 COPY entrypoint.sh ./
 
 RUN chmod +x /app/entrypoint.sh

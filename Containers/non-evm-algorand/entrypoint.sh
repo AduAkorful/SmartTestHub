@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set -o pipefail
 
 echo "🚀 Starting Enhanced Algorand PyTeal Container..."
 
@@ -68,7 +69,7 @@ done
 log_with_timestamp() {
     local message="$1"
     local log_type="${2:-info}"
-    local timestamp="[$(date '+%Y-%m-24 %H:%M:%S')]"
+    local timestamp="[$(date '+%Y-%m-%d %H:%M:%S')]"
     local color_code=""
     local icon=""
     local log_file="$LOG_FILE"
@@ -272,7 +273,7 @@ run_comprehensive_tests() {
     # Unit Tests with enhanced reporting
     log_with_timestamp "🧪 Running unit tests..." "debug"
     cd "$contracts_dir"
-    if python -m pytest --cov="src" \
+    if python -m pytest -c /app/config/pytest.ini --cov="src" \
              --cov-report=term \
              --cov-report=xml:"$test_results_dir/coverage.xml" \
              --cov-report=html:"$test_results_dir/coverage-html" \
@@ -291,7 +292,7 @@ run_comprehensive_tests() {
     # Integration Tests with timeout and retry
     log_with_timestamp "🔄 Running integration tests..." "integration"
     cd "$contracts_dir"
-    CONTRACT_NAME="$contract_name" python -m pytest -m integration \
+    CONTRACT_NAME="$contract_name" python -m pytest -c /app/config/pytest.ini -m integration \
              --junitxml="$test_results_dir/integration.xml" \
              --tb=short \
              tests/ 2>&1 | tee "$test_results_dir/integration.log" || \
@@ -301,7 +302,7 @@ run_comprehensive_tests() {
     # Performance Tests with metrics
     log_with_timestamp "⚡ Running performance tests..." "performance"
     cd "$contracts_dir"
-    CONTRACT_NAME="$contract_name" python -m pytest -m performance \
+    CONTRACT_NAME="$contract_name" python -m pytest -c /app/config/pytest.ini -m performance \
              --junitxml="$test_results_dir/performance.xml" \
              --tb=short \
              tests/ 2>&1 | tee "$test_results_dir/performance.log" || \
@@ -419,7 +420,7 @@ except Exception as e:
     {
         echo "Test Summary for $contract_name"
         echo "================================"
-        echo "Timestamp: $(date '+%Y-%m-24 %H:%M:%S')"
+        echo "Timestamp: $(date '+%Y-%m-%d %H:%M:%S')"
         echo "Unit Tests: $(grep "failed\|passed" "$test_results_dir/unittest.log" | tail -n1)"
         echo "Integration Tests: $(grep "failed\|passed" "$test_results_dir/integration.log" | tail -n1)"
         echo "Performance Tests: $(grep "failed\|passed" "$test_results_dir/performance.log" | tail -n1)"

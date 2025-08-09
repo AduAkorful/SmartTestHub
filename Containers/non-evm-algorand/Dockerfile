@@ -6,6 +6,7 @@ RUN apt-get update && \
         inotify-tools \
         nodejs \
         npm \
+        procps \
         git \
         curl \
         ca-certificates \
@@ -35,8 +36,8 @@ RUN mkdir -p /app/input \
     /app/scripts
 
 # Copy application files and templates
-COPY scripts/test_template.py /app/scripts/
-COPY scripts/aggregate-all-logs.js /app/scripts/
+COPY scripts/ /app/scripts/
+COPY config/ /app/config/
 COPY entrypoint.sh /app/
 
 # Set permissions

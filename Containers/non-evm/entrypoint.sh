@@ -3,13 +3,59 @@ set -e
 set -o pipefail
 
 # --- Environment/parallelism setup ---
-# SMART CACHING: Keep dependency cache, clear build artifacts
+# SMART CACHING: Keep dependency cache, clear per-project artifacts only
 export RUSTC_WRAPPER=sccache
 export SCCACHE_CACHE_SIZE=${SCCACHE_CACHE_SIZE:-12G}
 export SCCACHE_DIR="/app/.cache/sccache"
 export CARGO_TARGET_DIR=/app/target
 export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-$(nproc)}
 export RUSTFLAGS="-C target-cpu=native"
+# Use sparse registry to drastically reduce index downloads
+export CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
+
+# Cache directory for baseline Cargo.lock files per toolchain
+LOCK_CACHE_DIR="/app/.cargo-lock-cache"
+mkdir -p "$LOCK_CACHE_DIR"
+
+# One-time baseline Cargo.lock generator for Solana 2.x
+generate_baseline_lock_if_needed() {
+    local baseline_lock="$LOCK_CACHE_DIR/solana-2.lock"
+    if [ -f "$baseline_lock" ]; then
+        return 0
+    fi
+    log_with_timestamp "🔒 Generating baseline Cargo.lock for Solana 2.x (one-time)"
+    (
+      set -e
+      mkdir -p /app/_lock_seed && cd /app/_lock_seed
+      cat > Cargo.toml <<EOF
+[package]
+name = "lock_seed"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+solana-program = "2"
+solana-sdk = "2"
+
+[dev-dependencies]
+solana-program-test = "2"
+tokio = { version = "1.0", features = ["macros", "rt"] }
+EOF
+      mkdir -p src && echo "pub fn placeholder() {}" > src/lib.rs
+      # Generate lockfile without building
+      cargo generate-lockfile || cargo fetch
+      cp Cargo.lock "$baseline_lock" 2>/dev/null || true
+    ) || log_with_timestamp "⚠️ Baseline lock generation encountered issues" "warning"
+    rm -rf /app/_lock_seed 2>/dev/null || true
+    if [ -f "$baseline_lock" ]; then
+        log_with_timestamp "✅ Baseline Cargo.lock created at $baseline_lock"
+    else
+        log_with_timestamp "⚠️ Baseline Cargo.lock not created; proceeding without seeding" "warning"
+    fi
+}
 
 # SMART CACHE CLEANUP AT STARTUP: Keep dependencies, clear build artifacts
 rm -rf "$CARGO_TARGET_DIR" ~/.cache/solana/cli 2>/dev/null || true
@@ -536,6 +582,7 @@ if [ -f "/app/.env" ]; then
 fi
 
 setup_solana_environment
+generate_baseline_lock_if_needed
 
 watch_dir="/app/input"
 MARKER_DIR="/app/.processed"
@@ -571,18 +618,30 @@ while read -r directory events filename; do
             create_dynamic_cargo_toml "$contract_name" "$project_type"
             create_test_files "$contract_name" "$project_type"
 
-            # SMART CACHE: Clear build artifacts, keep dependencies
-            rm -rf "$CARGO_TARGET_DIR" "$contracts_dir/target" 2>/dev/null || true
+            # SMART CACHE: Clear only project-local artifacts, keep global target cache
+            rm -rf "$contracts_dir/target" 2>/dev/null || true
             mkdir -p "$CARGO_TARGET_DIR"
             
             # Keep sccache enabled for faster compilation
             export RUSTC_WRAPPER=sccache
             
-            # Incremental dependency management: let Cargo fetch only what's needed
-            ensure_dependencies_available "$contracts_dir/Cargo.toml"
-            
-            # Count and log dependencies for transparency
-            log_dependency_count "$contracts_dir"
+            # Bootstrap Cargo.lock from shared cache if available to avoid full graph resolution
+            if [ -f "$LOCK_CACHE_DIR/solana-2.lock" ] && [ ! -f "$contracts_dir/Cargo.lock" ]; then
+                cp "$LOCK_CACHE_DIR/solana-2.lock" "$contracts_dir/Cargo.lock" 2>/dev/null || true
+                log_with_timestamp "🔒 Seeded Cargo.lock from shared cache (Solana 2.x baseline)"
+            fi
+
+                # Bootstrap Cargo.lock from shared cache if available to avoid full graph resolution
+                if [ -f "$LOCK_CACHE_DIR/solana-2.lock" ] && [ ! -f "$contracts_dir/Cargo.lock" ]; then
+                    cp "$LOCK_CACHE_DIR/solana-2.lock" "$contracts_dir/Cargo.lock" 2>/dev/null || true
+                    log_with_timestamp "🔒 Seeded Cargo.lock from shared cache (Solana 2.x baseline)"
+                fi
+
+                # Incremental dependency management: let Cargo fetch only what's needed
+                ensure_dependencies_available "$contracts_dir/Cargo.toml"
+
+                # Count and log dependencies for transparency
+                log_dependency_count "$contracts_dir"
 
             # Build step
             log_with_timestamp "🔨 Building $contract_name ($project_type)..."
@@ -695,8 +754,8 @@ then
                 create_dynamic_cargo_toml "$contract_name" "$project_type"
                 create_test_files "$contract_name" "$project_type"
 
-                # SMART CACHE: Clear build artifacts, keep dependencies  
-                rm -rf "$CARGO_TARGET_DIR" "$contracts_dir/target" 2>/dev/null || true
+                # SMART CACHE: Clear only project-local artifacts, keep global target cache  
+                rm -rf "$contracts_dir/target" 2>/dev/null || true
                 mkdir -p "$CARGO_TARGET_DIR"
                 
                 # Keep sccache enabled for faster compilation
