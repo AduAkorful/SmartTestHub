@@ -20,6 +20,24 @@ log_with_timestamp() {
     esac
 }
 
+find_snforge_binary() {
+    if command -v snforge >/dev/null 2>&1; then
+        echo "snforge"
+        return 0
+    fi
+    for candidate in \
+        "/root/.starknet-foundry/bin/snforge" \
+        "/root/.cargo/bin/snforge" \
+        "/root/.local/bin/snforge" \
+        "/usr/local/bin/snforge"; do
+        if [ -x "$candidate" ]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 is_cairo1_contract() {
     local file="$1"
     # Heuristics: Cairo 1 markers or presence of Scarb.toml nearby
@@ -103,21 +121,28 @@ PYEOF
                 setup_scarb_project "$CONTRACTS_DIR/src/contract.cairo" "$CONTRACTS_DIR/cairo1"
                 if (cd "$CONTRACTS_DIR/cairo1" && scarb build > "/app/logs/${CONTRACT_NAME}-compile.log" 2>&1); then
                     echo "compile_status=success(cairo1)" > "/app/logs/${CONTRACT_NAME}-compile.status"
-                    # Copy artifacts for report visibility if present, with predictable names for the aggregator
-                    sierra_src=$(find "$CONTRACTS_DIR/cairo1/target/dev" -maxdepth 1 -type f -name "*.sierra.json" | head -n1)
+                    # Robustly capture artifacts with predictable names for the aggregator
+                    sierra_src=$(find "$CONTRACTS_DIR/cairo1/target/dev" -maxdepth 2 -type f \( -name "*.sierra.json" -o -name "*contract_class.json" \) | head -n1)
                     if [ -n "$sierra_src" ]; then
-                        cp "$sierra_src" "/app/logs/${CONTRACT_NAME}.sierra.json" 2>/dev/null || true
+                        cp -f "$sierra_src" "/app/logs/${CONTRACT_NAME}.sierra.json" 2>/dev/null || true
+                        log_with_timestamp "📦 Sierra artifact captured: $(basename "$sierra_src")"
+                    else
+                        log_with_timestamp "⚠️ No Sierra artifact found in target/dev" "warning"
                     fi
-                    casm_src=$(find "$CONTRACTS_DIR/cairo1/target/dev" -maxdepth 1 -type f \( -name "*.casm" -o -name "*.casm.json" \) | head -n1)
+                    casm_src=$(find "$CONTRACTS_DIR/cairo1/target/dev" -maxdepth 2 -type f \( -name "*.casm" -o -name "*.casm.json" -o -name "*casm*class.json" \) | head -n1)
                     if [ -n "$casm_src" ]; then
-                        cp "$casm_src" "/app/logs/${CONTRACT_NAME}.casm" 2>/dev/null || true
+                        cp -f "$casm_src" "/app/logs/${CONTRACT_NAME}.casm" 2>/dev/null || true
+                        log_with_timestamp "📦 CASM artifact captured: $(basename "$casm_src")"
+                    else
+                        log_with_timestamp "⚠️ No CASM artifact found in target/dev" "warning"
                     fi
                     # Run Cairo 1 tests if snforge is available
-                    if command -v snforge >/dev/null 2>&1; then
-                        log_with_timestamp "🧪 Running snforge tests..."
-                        (cd "$CONTRACTS_DIR/cairo1" && snforge test > "/app/logs/reports/${CONTRACT_NAME}-pytest.log" 2>&1) || true
+                    SNFORGE_BIN=$(find_snforge_binary)
+                    if [ -n "$SNFORGE_BIN" ]; then
+                        log_with_timestamp "🧪 Running snforge tests with $SNFORGE_BIN..."
+                        (cd "$CONTRACTS_DIR/cairo1" && "$SNFORGE_BIN" test > "/app/logs/reports/${CONTRACT_NAME}-pytest.log" 2>&1) || true
                     else
-                        log_with_timestamp "⚠️ snforge not available; skipping Cairo 1 unit tests" "error"
+                        log_with_timestamp "⚠️ snforge not available; skipping Cairo 1 unit tests" "warning"
                         echo "Cairo 1 build succeeded; tests unavailable (snforge not found)" > "/app/logs/reports/${CONTRACT_NAME}-pytest.log"
                     fi
                 else
