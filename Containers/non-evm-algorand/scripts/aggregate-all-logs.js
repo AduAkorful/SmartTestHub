@@ -55,6 +55,11 @@ fullLog += section('Flake8 Style Analysis', tryRead(`${contractReportsDir}/flake
 fullLog += section('Black Code Formatting', tryRead(`${contractReportsDir}/black.log`));
 fullLog += section('TEAL Compilation Analysis', tryRead(`${contractReportsDir}/teal.log`));
 fullLog += section('TEAL Compilation Errors', tryRead(`${contractReportsDir}/teal-error.log`));
+// If SyntaxError flag exists, include it explicitly in the report
+const statusFlag = tryRead(`${contractReportsDir}/.status`);
+if (statusFlag && statusFlag.includes('SYNTAX_ERROR=1')) {
+  fullLog += section('Detected SyntaxError', 'The contract source contained a SyntaxError; tests and coverage were effectively skipped to avoid misleading results.');
+}
 fullLog += section('Test Summary', tryRead(`${contractReportsDir}/summary.txt`));
 fullLog += section('Other Logs', aggregateDir('/app/logs', f => f.endsWith('.log') && f.includes(contractName)));
 

@@ -284,7 +284,13 @@ run_comprehensive_tests() {
              -v tests/ 2>&1 | tee "$test_results_dir/unittest.log"; then
         log_with_timestamp "✅ Unit tests completed successfully" "success"
     else
-        log_with_timestamp "⚠️ Unit tests completed with issues (exit code: $?)" "warning"
+        # Detect SyntaxError and annotate logs; skip coverage noise when unparseable
+        if grep -E "SyntaxError|couldn't parse|could not parse|Couldn\'t parse" "$test_results_dir/unittest.log" >/dev/null 2>&1; then
+            log_with_timestamp "❌ SyntaxError detected in contract; tests will be marked as skipped and coverage suppressed" "error"
+            echo "SYNTAX_ERROR=1" > "$test_results_dir/.status"
+        else
+            log_with_timestamp "⚠️ Unit tests completed with issues (exit code: $?)" "warning"
+        fi
         # Still capture some output even if tests fail
         echo "Test execution attempted but failed" >> "$test_results_dir/unittest.log"
     fi
@@ -414,6 +420,9 @@ except Exception as e:
         log_with_timestamp "❌ TEAL compilation failed" "error"
         cat "$test_results_dir/teal-error.log" >> "$ERROR_LOG"
         echo "TEAL compilation failed" >> "$test_results_dir/teal.log"
+        if grep -E "SyntaxError|couldn't parse|could not parse|Couldn\'t parse" "$test_results_dir/teal-error.log" >/dev/null 2>&1; then
+            echo "SYNTAX_ERROR=1" > "$test_results_dir/.status"
+        fi
     fi
     cd /app
     
@@ -422,6 +431,9 @@ except Exception as e:
         echo "Test Summary for $contract_name"
         echo "================================"
         echo "Timestamp: $(date '+%Y-%m-%d %H:%M:%S')"
+        if [ -f "$test_results_dir/.status" ] && grep -q "SYNTAX_ERROR=1" "$test_results_dir/.status"; then
+            echo "Status: SYNTAX_ERROR detected in contract source. Tests effectively skipped."
+        fi
         echo "Unit Tests: $(grep "failed\|passed" "$test_results_dir/unittest.log" | tail -n1)"
         echo "Integration Tests: $(grep "failed\|passed" "$test_results_dir/integration.log" | tail -n1)"
         echo "Performance Tests: $(grep "failed\|passed" "$test_results_dir/performance.log" | tail -n1)"
