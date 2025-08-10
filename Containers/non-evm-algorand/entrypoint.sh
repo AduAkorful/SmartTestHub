@@ -161,8 +161,24 @@ collect_performance_metrics() {
     
     # TEAL metrics with enhanced error handling
     python3 -c "
-import sys
+import sys, types
 sys.path.append('$contracts_dir/src')
+# Compatibility shim: map algosdk.future.transaction to algosdk.transaction if needed
+try:
+    import algosdk  # noqa: F401
+    try:
+        import algosdk.future  # noqa: F401
+    except Exception:
+        try:
+            import algosdk.transaction as _txn_mod  # noqa: F401
+            _future_mod = types.ModuleType('algosdk.future')
+            _future_mod.transaction = _txn_mod
+            sys.modules.setdefault('algosdk.future', _future_mod)
+            sys.modules.setdefault('algosdk.future.transaction', _txn_mod)
+        except Exception:
+            pass
+except Exception:
+    pass
 try:
     from contract import approval_program
     from pyteal import *
@@ -383,8 +399,24 @@ run_comprehensive_tests() {
     log_with_timestamp "📝 Analyzing TEAL output..." "debug"
     cd "$contracts_dir"
     if python3 -c "
-import sys
+import sys, types
 sys.path.append('src')
+# Compatibility shim: map algosdk.future.transaction to algosdk.transaction if needed
+try:
+    import algosdk  # noqa: F401
+    try:
+        import algosdk.future  # noqa: F401
+    except Exception:
+        try:
+            import algosdk.transaction as _txn_mod  # noqa: F401
+            _future_mod = types.ModuleType('algosdk.future')
+            _future_mod.transaction = _txn_mod
+            sys.modules.setdefault('algosdk.future', _future_mod)
+            sys.modules.setdefault('algosdk.future.transaction', _txn_mod)
+        except Exception:
+            pass
+except Exception:
+    pass
 try:
     import contract
     from pyteal import compileTeal, Mode
@@ -493,8 +525,8 @@ process_contract() {
         find /app -name "*.pyc" -delete 2>/dev/null || true
         export PYTHONDONTWRITEBYTECODE=1
         
-        # Copy contract and create necessary files
-        cp "$file" "$CONTRACTS_DIR/src/contract.py"
+        # Copy contract and create necessary files (preserve original filename)
+        cp "$file" "$CONTRACTS_DIR/src/$(basename "$file")"
         # Ensure package structure for relative imports
         touch "$CONTRACTS_DIR/__init__.py"
         touch "$CONTRACTS_DIR/src/__init__.py"
@@ -509,8 +541,9 @@ process_contract() {
             return 1
         fi
         
-        # Export contract name for test environment
+        # Export contract name and original module name (without .py) for tests/imports
         export CONTRACT_NAME
+        export CONTRACT_MODULE="${filename%.py}"
         
         # Run tests and analysis
         run_comprehensive_tests "$CONTRACT_NAME" "$CONTRACTS_DIR"

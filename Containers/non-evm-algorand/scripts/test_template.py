@@ -27,10 +27,13 @@ except Exception:
     pass
 
 def import_contract(contract_name):
-    """Dynamically import the contract module, but skip tests on SyntaxError/import errors."""
-    contract_path = f"/app/contracts/{contract_name}/src/contract.py"
+    """Dynamically import the uploaded contract module by its original filename.
+    Falls back to 'contract.py' for backward compatibility. Skips on SyntaxError/import errors.
+    """
+    module_basename = os.environ.get('CONTRACT_MODULE') or 'contract'
+    contract_path = f"/app/contracts/{contract_name}/src/{module_basename}.py"
     try:
-        spec = importlib.util.spec_from_file_location("contract", contract_path)
+        spec = importlib.util.spec_from_file_location(module_basename, contract_path)
         module = importlib.util.module_from_spec(spec)
         assert spec.loader is not None
         spec.loader.exec_module(module)
