@@ -69,10 +69,9 @@ EOF
     fi
 }
 
-# SMART CACHE CLEANUP AT STARTUP: Keep dependencies, clear build artifacts
-rm -rf "$CARGO_TARGET_DIR" ~/.cache/solana/cli 2>/dev/null || true
-# Keep: ~/.cargo/registry ~/.cargo/git (for dependency caching)
-# Keep: $SCCACHE_DIR (for compilation caching)  
+# SMART CACHE: do not wipe /app/target so builds can reuse artifacts across runs
+# Clear only Solana CLI cache; keep target and sccache
+rm -rf ~/.cache/solana/cli 2>/dev/null || true
 mkdir -p "$SCCACHE_DIR" "$CARGO_TARGET_DIR"
 
 LOG_FILE="/app/logs/test.log"
@@ -341,18 +340,17 @@ ensure_dependencies_available() {
     project_dir="$(dirname "$cargo_toml")"
     log_with_timestamp "🔄 Ensuring dependencies are available (incremental fetch)..."
     
-    # CARGO FETCH INTELLIGENCE:
-    # - Uses existing registry cache (~/.cargo/registry) 
-    # - Only downloads dependencies not already cached
-    # - Respects version constraints in Cargo.toml
-    # - Updates only what changed, keeps what's compatible
-    log_with_timestamp "📦 Cargo will leverage existing cache and fetch only missing dependencies"
-    
-    if (cd "$project_dir" && cargo fetch) 2>&1 | tee -a "$LOG_FILE"; then
-        log_with_timestamp "✅ Dependencies synchronized (leveraging cache + fetching missing)"
-    else
-        log_with_timestamp "⚠️ Some dependencies may have fetch issues" "warning"
+    # If a lockfile is already present, let the subsequent build use cached dependencies
+    # and fetch only what is strictly needed. Skip explicit `cargo fetch` to avoid redundant
+    # network work on every contract.
+    if [ -f "$project_dir/Cargo.lock" ]; then
+        log_with_timestamp "🔒 Cargo.lock present; skipping explicit cargo fetch"
+        return 0
     fi
+    
+    log_with_timestamp "📦 No Cargo.lock yet; performing one-time cargo fetch for dependency graph"
+    (cd "$project_dir" && cargo fetch) 2>&1 | tee -a "$LOG_FILE" || \
+        log_with_timestamp "⚠️ cargo fetch encountered issues (build will attempt to resolve incrementally)" "warning"
 }
 
 # Analyze contract source to determine what dependencies are actually needed

@@ -47,6 +47,8 @@ services:
       - shared_logs_non_evm:/app/logs
       - target_cache:/app/target
       - sccache_cache:/app/.cache/sccache
+      - cargo_registry:/root/.cargo/registry
+      - cargo_git:/root/.cargo/git
     tty: true
     stdin_open: true
     restart: unless-stopped
@@ -168,6 +170,8 @@ volumes:
   shared_logs_non_evm:
   target_cache:
   sccache_cache:
+  cargo_registry:
+  cargo_git:
   validator_ledger:
 
 networks:
