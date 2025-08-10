@@ -20,6 +20,40 @@ log_with_timestamp() {
     esac
 }
 
+is_cairo1_contract() {
+    local file="$1"
+    # Heuristics: Cairo 1 markers or presence of Scarb.toml nearby
+    if grep -Eq "(^|\s)use\s+starknet::|#\[contract\]|#\[storage\]|#\[event\]|mod\s+\w+\s*;" "$file" 2>/dev/null; then
+        return 0
+    fi
+    local proj_dir
+    proj_dir=$(dirname "$file")
+    [ -f "$proj_dir/Scarb.toml" ] && return 0
+    return 1
+}
+
+setup_scarb_project() {
+    local contract_path="$1"
+    local project_dir="$2"
+    mkdir -p "$project_dir/src"
+    cp "$contract_path" "$project_dir/src/lib.cairo"
+    # Generate minimal Scarb.toml if not provided
+    if [ ! -f "$project_dir/Scarb.toml" ]; then
+cat > "$project_dir/Scarb.toml" <<EOF
+[package]
+name = "${CONTRACT_NAME}"
+version = "0.1.0"
+
+[dependencies]
+starknet = ">=2.0.0"
+
+[[target.starknet-contract]]
+sierra = true
+casm = true
+EOF
+    fi
+}
+
 watch_dir="/app/input"
 MARKER_DIR="/app/.processed"
 mkdir -p "$watch_dir" "$MARKER_DIR"
@@ -62,16 +96,39 @@ PYEOF
             fi
             log_with_timestamp "🧪 Generated comprehensive tests for $CONTRACT_NAME"
 
-            # Compile first; gate tests on success
-            log_with_timestamp "🛠️ Compiling contract with cairo-compile..."
-            if cairo-compile "$CONTRACTS_DIR/src/contract.cairo" --output "/app/logs/${CONTRACT_NAME}-compiled.json" > "/app/logs/${CONTRACT_NAME}-compile.log" 2>&1; then
-                echo "compile_status=success" > "/app/logs/${CONTRACT_NAME}-compile.status"
-                log_with_timestamp "✅ Cairo compilation successful; running pytest for $CONTRACT_NAME..."
-                pytest --maxfail=1 --disable-warnings "$CONTRACTS_DIR/tests/" | tee "/app/logs/reports/${CONTRACT_NAME}-pytest.log" | tee -a "$LOG_FILE" || true
+            # Dual-version compile/test path
+            if is_cairo1_contract "$CONTRACTS_DIR/src/contract.cairo"; then
+                log_with_timestamp "🛠️ Detected Cairo 1 contract; building with Scarb..."
+                setup_scarb_project "$CONTRACTS_DIR/src/contract.cairo" "$CONTRACTS_DIR/cairo1"
+                if (cd "$CONTRACTS_DIR/cairo1" && scarb build > "/app/logs/${CONTRACT_NAME}-compile.log" 2>&1); then
+                    echo "compile_status=success(cairo1)" > "/app/logs/${CONTRACT_NAME}-compile.status"
+                    # Copy artifacts for report visibility if present
+                    find "$CONTRACTS_DIR/cairo1/target/dev" -maxdepth 1 -type f \( -name "*.sierra.json" -o -name "*.casm" \) -exec cp {} /app/logs/ \; 2>/dev/null || true
+                    # Run Cairo 1 tests if snforge is available
+                    if command -v snforge >/dev/null 2>&1; then
+                        log_with_timestamp "🧪 Running snforge tests..."
+                        (cd "$CONTRACTS_DIR/cairo1" && snforge test > "/app/logs/reports/${CONTRACT_NAME}-pytest.log" 2>&1) || true
+                    else
+                        log_with_timestamp "⚠️ snforge not available; skipping Cairo 1 unit tests" "error"
+                        echo "Cairo 1 build succeeded; tests unavailable (snforge not found)" > "/app/logs/reports/${CONTRACT_NAME}-pytest.log"
+                    fi
+                else
+                    echo "compile_status=failure(cairo1)" > "/app/logs/${CONTRACT_NAME}-compile.status"
+                    log_with_timestamp "❌ Scarb build failed; see compile.log" "error"
+                    echo "SKIPPED: Compilation failed. See /app/logs/${CONTRACT_NAME}-compile.log" > "/app/logs/reports/${CONTRACT_NAME}-pytest.log"
+                fi
             else
-                echo "compile_status=failure" > "/app/logs/${CONTRACT_NAME}-compile.status"
-                log_with_timestamp "❌ Cairo compilation failed; skipping pytest to prevent misleading pass results" "error"
-                echo "SKIPPED: Compilation failed. See /app/logs/${CONTRACT_NAME}-compile.log" > "/app/logs/reports/${CONTRACT_NAME}-pytest.log"
+                # Cairo 0 path
+                log_with_timestamp "🛠️ Compiling contract with cairo-compile (Cairo 0)..."
+                if cairo-compile "$CONTRACTS_DIR/src/contract.cairo" --output "/app/logs/${CONTRACT_NAME}-compiled.json" > "/app/logs/${CONTRACT_NAME}-compile.log" 2>&1; then
+                    echo "compile_status=success(cairo0)" > "/app/logs/${CONTRACT_NAME}-compile.status"
+                    log_with_timestamp "✅ Compilation successful; running pytest for $CONTRACT_NAME..."
+                    pytest --maxfail=1 --disable-warnings "$CONTRACTS_DIR/tests/" | tee "/app/logs/reports/${CONTRACT_NAME}-pytest.log" | tee -a "$LOG_FILE" || true
+                else
+                    echo "compile_status=failure(cairo0)" > "/app/logs/${CONTRACT_NAME}-compile.status"
+                    log_with_timestamp "❌ Cairo 0 compilation failed; skipping pytest" "error"
+                    echo "SKIPPED: Compilation failed. See /app/logs/${CONTRACT_NAME}-compile.log" > "/app/logs/reports/${CONTRACT_NAME}-pytest.log"
+                fi
             fi
 
             log_with_timestamp "🔎 Skipping flake8 for Cairo source (Python linter is not applicable)"

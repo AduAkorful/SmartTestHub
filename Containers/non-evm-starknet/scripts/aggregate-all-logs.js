@@ -51,7 +51,12 @@ fullLog += section('Flake8 Linting', tryRead(`/app/logs/security/${contractName}
 fullLog += section('Security Analysis', tryRead(`/app/logs/security/${contractName}-bandit.log`));
 fullLog += section('Cairo Compilation', tryRead(`/app/logs/${contractName}-compile.log`));
 fullLog += section('Cairo Compile Status', tryRead(`/app/logs/${contractName}-compile.status`));
-fullLog += section('Compiled Contract', tryRead(`/app/logs/${contractName}-compiled.json`));
+// Include Cairo 1 artifacts (if present)
+const sierra = tryRead(`/app/logs/${contractName}.sierra.json`);
+const casm = tryRead(`/app/logs/${contractName}.casm`);
+fullLog += section('Cairo Sierra', sierra);
+fullLog += section('Cairo CASM', casm);
+fullLog += section('Compiled Contract (Cairo 0)', tryRead(`/app/logs/${contractName}-compiled.json`));
 fullLog += section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
 // Summarize only present inputs
 const present = [];
