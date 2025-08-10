@@ -30,9 +30,7 @@ function tryList(dir, filter = () => true) {
   }
 }
 function section(title, content) {
-  const clean = (content || '').trim();
-  if (!clean) return '';
-  return `\n\n## ${title}\n\n${clean}`;
+  return `\n\n## ${title}\n\n${content || '_No output found._'}`;
 }
 function aggregateDir(dir, filter = () => true) {
   return tryList(dir, f => f.startsWith(contractName) && filter(f))
@@ -58,28 +56,30 @@ fullLog += section('Cairo Sierra', sierra);
 fullLog += section('Cairo CASM', casm);
 fullLog += section('Compiled Contract (Cairo 0)', tryRead(`/app/logs/${contractName}-compiled.json`));
 fullLog += section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
-// Summarize only present inputs
-const present = [];
-if (contractPytestLog.trim() || tryRead('/app/logs/test.log').trim()) present.push('PyTest');
-if (tryRead(`/app/logs/security/${contractName}-flake8.log`).trim()) present.push('Flake8');
-if (tryRead(`/app/logs/security/${contractName}-bandit.log`).trim()) present.push('Security Analysis');
-if (tryRead(`/app/logs/${contractName}-compile.log`).trim()) present.push('Cairo Compilation');
-if (tryRead(`/app/logs/${contractName}-compile.status`).trim()) present.push('Compile Status');
-if (tryRead(`/app/logs/${contractName}-compiled.json`).trim()) present.push('Compiled Contract');
-if (present.length) {
-  fullLog += section('Tool Inputs Included', present.map(p => `- ${p}`).join('\n'));
-}
+fullLog += section('Tool Run Confirmation', `
+The following tools were executed for ${contractName}:
+- Testing: PyTest for contract functionality and syntax validation
+- Linting: Flake8 for code style analysis (on Cairo files)
+- Security: Basic security analysis for Cairo contracts
+- Compilation: cairo-compile/scarb build for contract compilation and validation
+- Code Analysis: File structure and syntax verification
+
+Tool Output Locations:
+- Test results: /app/logs/test.log or /app/logs/reports/${contractName}-pytest.log
+- Flake8 output: /app/logs/security/${contractName}-flake8.log
+- Security analysis: /app/logs/security/${contractName}-bandit.log
+- Compilation logs: /app/logs/${contractName}-compile.log
+- Compiled contract (Cairo 0): /app/logs/${contractName}-compiled.json
+- Cairo 1 artifacts: /app/logs/${contractName}.sierra.json, /app/logs/${contractName}.casm
+
+If any section above says "_No output found._", that tool either failed to run or produced no output.
+`);
 
 const prompt = `
 You are an expert smart contract auditor specializing in StarkNet/Cairo contracts.
-You are given the raw logs and reports from a full smart contract testing and analysis pipeline.
+You are given the **raw logs and reports** from a full smart contract testing and analysis pipeline.
 
-IMPORTANT OUTPUT RULES:
-- Use the section titles below in order WHEN THERE IS CONTENT for them.
-- Only write about evidence present in the logs. Do not mention missing/absent data.
-- Never write phrases like "No output found", "not available", "skipped", or "missing". Omit empty sections entirely.
-
-Sections (include only if applicable):
+**IMPORTANT: Structure your response in exactly these 6 sections in this order:**
 
 ## 1. OVERVIEW
 - Contract Information (file name, size, lines of code, contract type: StarkNet Cairo)
@@ -121,11 +121,15 @@ Sections (include only if applicable):
 - Priority Actions (most important next steps for Cairo contracts)
 - Recommendations (StarkNet best practices and improvements)
 
-Analysis Guidelines:
-- Extract specific metrics only from present logs; avoid speculation.
-- Provide actionable recommendations grounded in observed outputs.
+**Analysis Guidelines:**
+- Extract specific metrics from logs (file size, line counts, function counts, test numbers)
+- Focus on Cairo-specific vulnerabilities and patterns
+- Analyze Cairo compilation and bytecode efficiency
+- Identify storage variable and event handling issues
+- Provide actionable recommendations for StarkNet development
+- Include specific line numbers and code references when available
 
-Complete logs and reports:
+Here are the complete logs and reports:
 ${fullLog}
 `;
 

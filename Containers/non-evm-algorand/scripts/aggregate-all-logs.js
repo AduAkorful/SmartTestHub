@@ -32,9 +32,7 @@ function tryList(dir, filter = () => true) {
 }
 
 function section(title, content) {
-  const clean = (content || '').trim();
-  if (!clean) return '';
-  return `\n\n## ${title}\n\n${clean}`;
+  return `\n\n## ${title}\n\n${content || '_No output found._'}`;
 }
 
 function aggregateDir(dir, filter = () => true) {
@@ -65,32 +63,27 @@ if (statusFlag && statusFlag.includes('SYNTAX_ERROR=1')) {
 fullLog += section('Test Summary', tryRead(`${contractReportsDir}/summary.txt`));
 fullLog += section('Other Logs', aggregateDir('/app/logs', f => f.endsWith('.log') && f.includes(contractName)));
 
-// Only append a tools list when we have content
-const present = [];
-if (tryRead(`${contractReportsDir}/unittest.log`).trim()) present.push('PyTest Unit Tests');
-if (tryRead(`${contractReportsDir}/integration.log`).trim()) present.push('PyTest Integration Tests');
-if (tryRead(`${contractReportsDir}/performance.log`).trim()) present.push('PyTest Performance Tests');
-if (tryRead(`${contractReportsDir}/coverage.xml`).trim()) present.push('Coverage');
-if (tryRead(`${contractReportsDir}/bandit.log`).trim()) present.push('Bandit');
-if (tryRead(`${contractReportsDir}/mypy.log`).trim()) present.push('MyPy');
-if (tryRead(`${contractReportsDir}/flake8.log`).trim()) present.push('Flake8');
-if (tryRead(`${contractReportsDir}/black.log`).trim()) present.push('Black');
-if (tryRead(`${contractReportsDir}/teal.log`).trim()) present.push('TEAL Compilation');
-if (tryRead(`${contractReportsDir}/teal-error.log`).trim()) present.push('TEAL Errors');
-if (present.length) {
-  fullLog += section('Tool Inputs Included', present.map(p => `- ${p}`).join('\n'));
-}
+fullLog += section('Tool Run Confirmation', `
+The following tools were executed for ${contractName}:
+- Testing: PyTest Unit Tests, Integration Tests, Performance Tests
+- Coverage: pytest-cov for code coverage analysis
+- Security Analysis: Bandit (security issues), MyPy (type checking), Flake8 (style issues)
+- Code Quality: Black (formatting check)
+- TEAL Analysis: PyTeal to TEAL compilation and metrics
+- Performance: TEAL opcode counting and efficiency analysis
+
+Tool Output Locations:
+- All tool outputs are saved in: /app/logs/reports/${contractName}/
+- Individual log files: unittest.log, integration.log, performance.log, bandit.log, mypy.log, flake8.log, black.log, teal.log
+
+If any section above says "_No output found._", that tool either failed to run or produced no output.
+`);
 
 const prompt = `
 You are an expert smart contract auditor specializing in Algorand/PyTeal contracts.
-You are given the raw logs and reports from a full smart contract testing and analysis pipeline.
+You are given the **raw logs and reports** from a full smart contract testing and analysis pipeline.
 
-IMPORTANT OUTPUT RULES:
-- Use the section titles below in order WHEN THERE IS CONTENT for them.
-- Only write about evidence present in the logs. Do not mention missing/absent data.
-- Never write phrases like "No output found", "not available", "skipped", or "missing". Omit empty sections entirely.
-
-Sections (include only if applicable):
+**IMPORTANT: Structure your response in exactly these 6 sections in this order:**
 
 ## 1. OVERVIEW
 - Contract Information (file name, size, lines of code, contract type: Algorand PyTeal)
@@ -132,11 +125,15 @@ Sections (include only if applicable):
 - Priority Actions (most important next steps for PyTeal contracts)
 - Recommendations (Algorand best practices and improvements)
 
-Analysis Guidelines:
-- Extract specific metrics only from present logs; avoid speculation.
-- Provide actionable recommendations grounded in observed outputs.
+**Analysis Guidelines:**
+- Extract specific metrics from logs (file size, line counts, TEAL size, test numbers)
+- Focus on Algorand-specific vulnerabilities and patterns
+- Analyze PyTeal to TEAL compilation efficiency
+- Identify state management and transaction handling issues
+- Provide actionable recommendations for Algorand development
+- Include specific line numbers and code references when available
 
-Complete logs and reports:
+Here are the complete logs and reports:
 ${fullLog}
 `;
 

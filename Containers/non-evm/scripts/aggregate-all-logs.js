@@ -33,9 +33,7 @@ function tryList(dir, filter = () => true) {
 }
 
 function section(title, content) {
-  const clean = (content || '').trim();
-  if (!clean) return '';
-  return `\n\n## ${title}\n\n${clean}`;
+  return `\n\n## ${title}\n\n${content || '_No output found._'}`;
 }
 
 // Only aggregate logs for this contract
@@ -84,67 +82,83 @@ const mainReportNote = `Note: After aggregation, only the main AI-enhanced repor
 
 let fullLog = '';
 // Removed: Docker process logs (test.log) to reduce length
-const secAudit = section('Security Audit (Cargo Audit)', aggregateDir('/app/logs/security', f => f.endsWith('-cargo-audit.log')));
-const secClippy = section('Security Lint (Clippy)', aggregateDir('/app/logs/security', f => f.endsWith('-clippy.log')));
-const testRes = section('Test Results', aggregateTestResults());
-const covRes = section('Coverage Reports (Tarpaulin)', aggregateCoverage());
-const benches = section('Performance Benchmarks', aggregateDir('/app/logs/benchmarks', f => f.endsWith('-benchmarks.log')));
-const binSize = section('Binary Size Analysis', aggregateDir('/app/logs/analysis', f => f.endsWith('-binary-size.log')));
-const perfLog = section('Performance Log', tryRead('/app/logs/analysis/performance.log'));
-const summary = section('Comprehensive Summary', aggregateDir('/app/logs/reports', f => f.endsWith('-summary.log')));
-const docs = section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
+fullLog += section('Security Audit (Cargo Audit)', aggregateDir('/app/logs/security', f => f.endsWith('-cargo-audit.log')));
+fullLog += section('Security Lint (Clippy)', aggregateDir('/app/logs/security', f => f.endsWith('-clippy.log')));
+fullLog += section('Test Results', aggregateTestResults());
+fullLog += section('Coverage Reports (Tarpaulin)', aggregateCoverage());
+fullLog += section('Performance Benchmarks', aggregateDir('/app/logs/benchmarks', f => f.endsWith('-benchmarks.log')));
+fullLog += section('Binary Size Analysis', aggregateDir('/app/logs/analysis', f => f.endsWith('-binary-size.log')));
+fullLog += section('Performance Log', tryRead('/app/logs/analysis/performance.log'));
+fullLog += section('Comprehensive Summary', aggregateDir('/app/logs/reports', f => f.endsWith('-summary.log')));
+fullLog += section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
 
-fullLog += secAudit + secClippy + testRes + covRes + benches + binSize + perfLog + summary + docs;
+fullLog += section('Tool Run Confirmation', `
+The following tools' logs were aggregated for ${contractName}:
+- Testing: Coverage (all files in /app/logs/coverage starting with ${contractName})
+- Security: Cargo Audit and Clippy (all files in /app/logs/security starting with ${contractName})
+- Performance: All logs in /app/logs/benchmarks starting with ${contractName}
+- AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
+- Other specific tool logs (excluding verbose container procedure logs)
+If any section above says "_No output found._", that tool was missing or the tool did not run.
 
-// Summarize only what was included, without stating absences
-const present = [];
-if (secAudit) present.push('Cargo Audit');
-if (secClippy) present.push('Clippy');
-if (testRes) present.push('Tests');
-if (covRes) present.push('Coverage');
-if (benches) present.push('Benchmarks');
-if (binSize) present.push('Binary Size');
-if (perfLog) present.push('Performance Log');
-if (summary) present.push('Summary');
-if (docs) present.push('AI/Manual Reports');
-if (present.length) {
-  fullLog += `\n\n## Tool Inputs Included\n\n${present.map(p => `- ${p}`).join('\n')}`;
-}
+${mainReportNote}
+`);
 
 const prompt = `
 You are an expert smart contract auditor specializing in Solana/Rust contracts.
-You are given the raw logs and reports from a full smart contract testing and analysis pipeline.
+You are given the **raw logs and reports** from a full smart contract testing and analysis pipeline.
 
-IMPORTANT OUTPUT RULES:
-- Use the following section titles and order WHEN THERE IS CONTENT for them.
-- Only write about evidence present in the logs below. DO NOT mention or infer missing/absent data.
-- Never write phrases like "No output found", "not available", "skipped", or "missing".
-- Omit any subsection or whole section if there is no evidence for it in the logs.
+**IMPORTANT: Structure your response in exactly these 6 sections in this order:**
 
-Sections (include only if applicable):
 ## 1. OVERVIEW
-- Contract Information; Analysis Status; Summary of tools and results (from present logs only)
+- Contract Information (file name, size, lines of code, contract type: Solana Rust)
+- Analysis Status (Rust compilation, testing status, security status, coverage status)
+- Summary of all tools that ran and their overall results
 
 ## 2. TESTING
-- Test execution results; Rust compilation/build results; Program test results; Coverage metrics; Recommendations
+- Test execution results (passed/failed/skipped counts)
+- Rust compilation and build results
+- Solana program test results
+- Test coverage metrics and detailed test analysis
+- Testing recommendations for Solana-specific scenarios
 
 ## 3. SECURITY
-- Security summary; Findings; Results from security tools; Best practices
+- Security Summary with vulnerability counts (Critical: X, High: X, Medium: X, Low: X)
+- Security Score assessment (e.g., "Good security with minor issues - Address the identified vulnerabilities")
+- Detailed vulnerability findings with Rust/Solana-specific security patterns
+- Results from security tools (Cargo audit, Clippy, custom Solana analysis)
+- Solana security best practices and account handling recommendations
 
 ## 4. CODE QUALITY
-- Linting results; Metrics; Standards compliance; Improvements
+- Code quality score and overall assessment
+- Rust linting results (Clippy errors, warnings, style issues)
+- Rust code metrics (complexity, maintainability, documentation quality)
+- Solana coding standards compliance and naming conventions
+- Code improvement suggestions for Rust/Solana development
 
 ## 5. PERFORMANCE
-- Binary size; Build/test timing; Execution efficiency; Optimization recommendations
+- Rust Analysis (binary size, compilation performance, execution efficiency)
+- Contract metrics (Rust file size, complexity, memory usage)
+- Performance recommendations and Rust optimization opportunities
+- Solana transaction cost analysis and compute unit efficiency
 
 ## 6. AI SUMMARY
-- Overall Assessment; Risk; Deployment Readiness; Key Findings; Priority Actions; Recommendations
+- Overall Assessment (Excellent/Good/Fair/Poor)
+- Risk Level (Low/Medium/High/Critical)
+- Deployment Readiness (Ready/Ready with improvements/Not ready)
+- Key Findings (main observations and Solana-specific issues)
+- Priority Actions (most important next steps for Rust contracts)
+- Recommendations (Solana best practices and improvements)
 
-Analysis Guidelines:
-- Extract specific metrics directly from the logs. Do not speculate.
-- Provide actionable recommendations grounded in the observed outputs.
+**Analysis Guidelines:**
+- Extract specific metrics from logs (file size, line counts, test numbers, binary size)
+- Focus on Rust/Solana-specific vulnerabilities and patterns
+- Analyze Rust compilation efficiency and safety features
+- Identify account handling and instruction processing issues
+- Provide actionable recommendations for Solana development
+- Include specific line numbers and code references when available
 
-Complete logs and reports:
+Here are the complete logs and reports:
 ${fullLog}
 `;
 
