@@ -131,6 +131,19 @@ run_performance_analysis() {
     local contract_name="$1"
     if [ "$RUN_BENCHMARKS" != "1" ]; then
         log_with_timestamp "⏭️ Skipping benchmarks (RUN_BENCHMARKS=0)" "performance"
+        # Even if benchmarks are skipped, write binary size analysis to keep reports populated
+        if [ -d "$CARGO_TARGET_DIR/release" ] || [ -d "$CARGO_TARGET_DIR/debug" ]; then
+            {
+                echo "Binary size analysis for $contract_name (no benchmarks)"
+                echo "Timestamp: $(date)"
+                echo "--- Release artifacts ---"
+                find "$CARGO_TARGET_DIR/release" -maxdepth 1 -type f -name "*${contract_name}*" -exec ls -lh {} \; 2>/dev/null || true
+                echo "--- Debug artifacts ---"
+                find "$CARGO_TARGET_DIR/debug" -maxdepth 1 -type f -name "*${contract_name}*" -exec ls -lh {} \; 2>/dev/null || true
+            } > "/app/logs/analysis/${contract_name}-binary-size.log" 2>&1
+        else
+            echo "No binary artifacts found for size analysis" > "/app/logs/analysis/${contract_name}-binary-size.log"
+        fi
         return 0
     fi
     log_with_timestamp "⚡ Running performance analysis for $contract_name..." "performance"
@@ -140,8 +153,15 @@ run_performance_analysis() {
     echo "No benchmarks available" > "/app/logs/benchmarks/${contract_name}-benchmarks.log"
     
     # Binary size analysis
-    if [ -f "$CARGO_TARGET_DIR/release/lib${contract_name}.rlib" ] || [ -f "$CARGO_TARGET_DIR/release/${contract_name}.so" ]; then
-        find "$CARGO_TARGET_DIR/release" -name "*${contract_name}*" -type f -exec ls -lh {} \; > "/app/logs/analysis/${contract_name}-binary-size.log" 2>&1
+    if [ -d "$CARGO_TARGET_DIR/release" ] || [ -d "$CARGO_TARGET_DIR/debug" ]; then
+        {
+            echo "Binary size analysis for $contract_name"
+            echo "Timestamp: $(date)"
+            echo "--- Release artifacts ---"
+            find "$CARGO_TARGET_DIR/release" -maxdepth 1 -type f -name "*${contract_name}*" -exec ls -lh {} \; 2>/dev/null || true
+            echo "--- Debug artifacts ---"
+            find "$CARGO_TARGET_DIR/debug" -maxdepth 1 -type f -name "*${contract_name}*" -exec ls -lh {} \; 2>/dev/null || true
+        } > "/app/logs/analysis/${contract_name}-binary-size.log" 2>&1
     else
         echo "No binary artifacts found for size analysis" > "/app/logs/analysis/${contract_name}-binary-size.log"
     fi
@@ -162,8 +182,17 @@ run_coverage_analysis() {
     fi
     log_with_timestamp "📊 Running coverage analysis for $contract_name (tool: $COVERAGE_TOOL)..."
     if [ "$COVERAGE_TOOL" = "llvm-cov" ]; then
-        (cd "$contracts_dir" && cargo llvm-cov --quiet --html --lcov --output-path "/app/logs/coverage/${contract_name}-lcov.info" --html-path "/app/logs/coverage/${contract_name}-coverage-html" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
-        echo "Coverage analysis failed or not available" > "/app/logs/coverage/${contract_name}-coverage.log"
+        if (cd "$contracts_dir" && cargo llvm-cov --quiet --html --lcov \
+              --output-path "/app/logs/coverage/${contract_name}-lcov.info" \
+              --html-path "/app/logs/coverage/${contract_name}-coverage-html" \
+              > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1); then
+            true
+        else
+            log_with_timestamp "⚠️ llvm-cov failed; attempting tarpaulin fallback"
+            (cd "$contracts_dir" && cargo tarpaulin --config "/app/config/tarpaulin.toml" --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
+            (cd "$contracts_dir" && cargo tarpaulin --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
+            echo "Coverage analysis failed or not available" > "/app/logs/coverage/${contract_name}-coverage.log"
+        fi
     else
         (cd "$contracts_dir" && cargo tarpaulin --config "/app/config/tarpaulin.toml" --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
         (cd "$contracts_dir" && cargo tarpaulin --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \

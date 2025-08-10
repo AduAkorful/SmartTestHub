@@ -288,8 +288,8 @@ run_comprehensive_tests() {
         if grep -E "SyntaxError|couldn't parse|could not parse|Couldn\'t parse" "$test_results_dir/unittest.log" >/dev/null 2>&1; then
             log_with_timestamp "❌ SyntaxError detected in contract; tests will be marked as skipped and coverage suppressed" "error"
             echo "SYNTAX_ERROR=1" > "$test_results_dir/.status"
-        else
-            log_with_timestamp "⚠️ Unit tests completed with issues (exit code: $?)" "warning"
+    else
+        log_with_timestamp "⚠️ Unit tests completed with issues (exit code: $?)" "warning"
         fi
         # Still capture some output even if tests fail
         echo "Test execution attempted but failed" >> "$test_results_dir/unittest.log"

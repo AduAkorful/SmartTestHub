@@ -88,6 +88,7 @@ fullLog += section('Test Results', aggregateTestResults());
 fullLog += section('Coverage Reports (Tarpaulin)', aggregateCoverage());
 fullLog += section('Performance Benchmarks', aggregateDir('/app/logs/benchmarks', f => f.endsWith('-benchmarks.log')));
 fullLog += section('Binary Size Analysis', aggregateDir('/app/logs/analysis', f => f.endsWith('-binary-size.log')));
+fullLog += section('Performance Log', tryRead('/app/logs/analysis/performance.log'));
 fullLog += section('Comprehensive Summary', aggregateDir('/app/logs/reports', f => f.endsWith('-summary.log')));
 fullLog += section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
 
