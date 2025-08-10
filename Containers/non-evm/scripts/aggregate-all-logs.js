@@ -33,7 +33,9 @@ function tryList(dir, filter = () => true) {
 }
 
 function section(title, content) {
-  return `\n\n## ${title}\n\n${content || '_No output found._'}`;
+  const clean = (content || '').trim();
+  if (!clean) return '';
+  return `\n\n## ${title}\n\n${clean}`;
 }
 
 // Only aggregate logs for this contract
@@ -82,27 +84,32 @@ const mainReportNote = `Note: After aggregation, only the main AI-enhanced repor
 
 let fullLog = '';
 // Removed: Docker process logs (test.log) to reduce length
-fullLog += section('Security Audit (Cargo Audit)', aggregateDir('/app/logs/security', f => f.endsWith('-cargo-audit.log')));
-fullLog += section('Security Lint (Clippy)', aggregateDir('/app/logs/security', f => f.endsWith('-clippy.log')));
-fullLog += section('Test Results', aggregateTestResults());
-fullLog += section('Coverage Reports (Tarpaulin)', aggregateCoverage());
-fullLog += section('Performance Benchmarks', aggregateDir('/app/logs/benchmarks', f => f.endsWith('-benchmarks.log')));
-fullLog += section('Binary Size Analysis', aggregateDir('/app/logs/analysis', f => f.endsWith('-binary-size.log')));
-fullLog += section('Performance Log', tryRead('/app/logs/analysis/performance.log'));
-fullLog += section('Comprehensive Summary', aggregateDir('/app/logs/reports', f => f.endsWith('-summary.log')));
-fullLog += section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
+const secAudit = section('Security Audit (Cargo Audit)', aggregateDir('/app/logs/security', f => f.endsWith('-cargo-audit.log')));
+const secClippy = section('Security Lint (Clippy)', aggregateDir('/app/logs/security', f => f.endsWith('-clippy.log')));
+const testRes = section('Test Results', aggregateTestResults());
+const covRes = section('Coverage Reports (Tarpaulin)', aggregateCoverage());
+const benches = section('Performance Benchmarks', aggregateDir('/app/logs/benchmarks', f => f.endsWith('-benchmarks.log')));
+const binSize = section('Binary Size Analysis', aggregateDir('/app/logs/analysis', f => f.endsWith('-binary-size.log')));
+const perfLog = section('Performance Log', tryRead('/app/logs/analysis/performance.log'));
+const summary = section('Comprehensive Summary', aggregateDir('/app/logs/reports', f => f.endsWith('-summary.log')));
+const docs = section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
 
-fullLog += section('Tool Run Confirmation', `
-The following tools' logs were aggregated for ${contractName}:
-- Testing: Coverage (all files in /app/logs/coverage starting with ${contractName})
-- Security: Cargo Audit and Clippy (all files in /app/logs/security starting with ${contractName})
-- Performance: All logs in /app/logs/benchmarks starting with ${contractName}
-- AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
-- Other specific tool logs (excluding verbose container procedure logs)
-If any section above says "_No output found._", that tool was missing or the tool did not run.
+fullLog += secAudit + secClippy + testRes + covRes + benches + binSize + perfLog + summary + docs;
 
-${mainReportNote}
-`);
+// Summarize only what was included, without stating absences
+const present = [];
+if (secAudit) present.push('Cargo Audit');
+if (secClippy) present.push('Clippy');
+if (testRes) present.push('Tests');
+if (covRes) present.push('Coverage');
+if (benches) present.push('Benchmarks');
+if (binSize) present.push('Binary Size');
+if (perfLog) present.push('Performance Log');
+if (summary) present.push('Summary');
+if (docs) present.push('AI/Manual Reports');
+if (present.length) {
+  fullLog += `\n\n## Tool Inputs Included\n\n${present.map(p => `- ${p}`).join('\n')}`;
+}
 
 const prompt = `
 You are an expert smart contract auditor specializing in Solana/Rust contracts.
