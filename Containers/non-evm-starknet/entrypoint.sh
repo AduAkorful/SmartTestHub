@@ -43,6 +43,7 @@ cat > "$project_dir/Scarb.toml" <<EOF
 [package]
 name = "${CONTRACT_NAME}"
 version = "0.1.0"
+edition = "2023_11"
 
 [dependencies]
 starknet = ">=2.0.0"
@@ -102,8 +103,15 @@ PYEOF
                 setup_scarb_project "$CONTRACTS_DIR/src/contract.cairo" "$CONTRACTS_DIR/cairo1"
                 if (cd "$CONTRACTS_DIR/cairo1" && scarb build > "/app/logs/${CONTRACT_NAME}-compile.log" 2>&1); then
                     echo "compile_status=success(cairo1)" > "/app/logs/${CONTRACT_NAME}-compile.status"
-                    # Copy artifacts for report visibility if present
-                    find "$CONTRACTS_DIR/cairo1/target/dev" -maxdepth 1 -type f \( -name "*.sierra.json" -o -name "*.casm" \) -exec cp {} /app/logs/ \; 2>/dev/null || true
+                    # Copy artifacts for report visibility if present, with predictable names for the aggregator
+                    sierra_src=$(find "$CONTRACTS_DIR/cairo1/target/dev" -maxdepth 1 -type f -name "*.sierra.json" | head -n1)
+                    if [ -n "$sierra_src" ]; then
+                        cp "$sierra_src" "/app/logs/${CONTRACT_NAME}.sierra.json" 2>/dev/null || true
+                    fi
+                    casm_src=$(find "$CONTRACTS_DIR/cairo1/target/dev" -maxdepth 1 -type f \( -name "*.casm" -o -name "*.casm.json" \) | head -n1)
+                    if [ -n "$casm_src" ]; then
+                        cp "$casm_src" "/app/logs/${CONTRACT_NAME}.casm" 2>/dev/null || true
+                    fi
                     # Run Cairo 1 tests if snforge is available
                     if command -v snforge >/dev/null 2>&1; then
                         log_with_timestamp "🧪 Running snforge tests..."
