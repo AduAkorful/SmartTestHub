@@ -42,10 +42,13 @@ const mainReportNote = `Note: After aggregation, only the main AI-enhanced repor
 
 let fullLog = '';
 // Aggregate all tool outputs for StarkNet container
-fullLog += section('PyTest Test Results', tryRead('/app/logs/test.log'));
+// Prefer contract-specific pytest log if present; fall back to container test.log
+const contractPytestLog = tryRead(`/app/logs/reports/${contractName}-pytest.log`);
+fullLog += section('PyTest Test Results', contractPytestLog || tryRead('/app/logs/test.log'));
 fullLog += section('Flake8 Linting', tryRead(`/app/logs/security/${contractName}-flake8.log`));
 fullLog += section('Security Analysis', tryRead(`/app/logs/security/${contractName}-bandit.log`));
 fullLog += section('Cairo Compilation', tryRead(`/app/logs/${contractName}-compile.log`));
+fullLog += section('Cairo Compile Status', tryRead(`/app/logs/${contractName}-compile.status`));
 fullLog += section('Compiled Contract', tryRead(`/app/logs/${contractName}-compiled.json`));
 fullLog += section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
 fullLog += section('Tool Run Confirmation', `

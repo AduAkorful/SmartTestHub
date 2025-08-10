@@ -62,8 +62,17 @@ PYEOF
             fi
             log_with_timestamp "🧪 Generated comprehensive tests for $CONTRACT_NAME"
 
-            log_with_timestamp "🧪 Running pytest for $CONTRACT_NAME..."
-            pytest --maxfail=1 --disable-warnings "$CONTRACTS_DIR/tests/" | tee "/app/logs/reports/${CONTRACT_NAME}-pytest.log" | tee -a "$LOG_FILE" || true
+            # Compile first; gate tests on success
+            log_with_timestamp "🛠️ Compiling contract with cairo-compile..."
+            if cairo-compile "$CONTRACTS_DIR/src/contract.cairo" --output "/app/logs/${CONTRACT_NAME}-compiled.json" > "/app/logs/${CONTRACT_NAME}-compile.log" 2>&1; then
+                echo "compile_status=success" > "/app/logs/${CONTRACT_NAME}-compile.status"
+                log_with_timestamp "✅ Cairo compilation successful; running pytest for $CONTRACT_NAME..."
+                pytest --maxfail=1 --disable-warnings "$CONTRACTS_DIR/tests/" | tee "/app/logs/reports/${CONTRACT_NAME}-pytest.log" | tee -a "$LOG_FILE" || true
+            else
+                echo "compile_status=failure" > "/app/logs/${CONTRACT_NAME}-compile.status"
+                log_with_timestamp "❌ Cairo compilation failed; skipping pytest to prevent misleading pass results" "error"
+                echo "SKIPPED: Compilation failed. See /app/logs/${CONTRACT_NAME}-compile.log" > "/app/logs/reports/${CONTRACT_NAME}-pytest.log"
+            fi
 
             log_with_timestamp "🔎 Skipping flake8 for Cairo source (Python linter is not applicable)"
             echo "Flake8 skipped: Cairo source is not Python" > "/app/logs/security/${CONTRACT_NAME}-flake8.log"
@@ -73,13 +82,6 @@ PYEOF
             echo "Cairo Security Analysis for ${CONTRACT_NAME}" > "/app/logs/security/${CONTRACT_NAME}-bandit.log"
             echo "Generated: $(date)" >> "/app/logs/security/${CONTRACT_NAME}-bandit.log"
             echo "Note: No security vulnerabilities detected by static analysis" >> "/app/logs/security/${CONTRACT_NAME}-bandit.log"
-
-            log_with_timestamp "🛠️ Compiling contract with cairo-compile..."
-            if cairo-compile "$CONTRACTS_DIR/src/contract.cairo" --output "/app/logs/${CONTRACT_NAME}-compiled.json" > "/app/logs/${CONTRACT_NAME}-compile.log" 2>&1; then
-                echo "compile_status=success" > "/app/logs/${CONTRACT_NAME}-compile.status"
-            else
-                echo "compile_status=failure" > "/app/logs/${CONTRACT_NAME}-compile.status"
-            fi
 
             if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
                 node /app/scripts/aggregate-all-logs.js "$CONTRACT_NAME" | tee -a "$LOG_FILE"
@@ -134,8 +136,8 @@ PYEOF
                 log_with_timestamp "🧪 Running pytest for $CONTRACT_NAME..."
                 pytest --maxfail=1 --disable-warnings "$CONTRACTS_DIR/tests/" | tee "/app/logs/reports/${CONTRACT_NAME}-pytest.log" | tee -a "$LOG_FILE" || true
 
-                log_with_timestamp "🔎 Running flake8 linter..."
-                flake8 "$CONTRACTS_DIR/src/contract.cairo" > "/app/logs/security/${CONTRACT_NAME}-flake8.log" 2>&1 || true
+                log_with_timestamp "🔎 Skipping flake8 for Cairo source (Python linter is not applicable)"
+                echo "Flake8 skipped: Cairo source is not Python" > "/app/logs/security/${CONTRACT_NAME}-flake8.log"
 
                 log_with_timestamp "🔒 Running security analysis..."
                 # Create basic security report since Bandit doesn't work on Cairo files
@@ -143,8 +145,7 @@ PYEOF
                 echo "Generated: $(date)" >> "/app/logs/security/${CONTRACT_NAME}-bandit.log"
                 echo "Note: No security vulnerabilities detected by static analysis" >> "/app/logs/security/${CONTRACT_NAME}-bandit.log"
 
-                log_with_timestamp "🛠️ Compiling contract with cairo-compile..."
-                cairo-compile "$CONTRACTS_DIR/src/contract.cairo" --output "/app/logs/${CONTRACT_NAME}-compiled.json" > "/app/logs/${CONTRACT_NAME}-compile.log" 2>&1 || true
+                # Compilation already handled above
 
                 if [ -f "/app/scripts/aggregate-all-logs.js" ]; then
                     node /app/scripts/aggregate-all-logs.js "$CONTRACT_NAME" | tee -a "$LOG_FILE"
