@@ -24,6 +24,7 @@ export RUN_COVERAGE="${RUN_COVERAGE:-0}"
 export RUN_TESTS_RELEASE="${RUN_TESTS_RELEASE:-0}"
 export FORCE_COVERAGE="${FORCE_COVERAGE:-0}"
 export COVERAGE_TOOL="${COVERAGE_TOOL:-tarpaulin}"
+export COVERAGE_FALLBACK="${COVERAGE_FALLBACK:-0}"
 export TEST_THREADS="${TEST_THREADS:-1}"
 export AUDIT_UPDATE_DB="${AUDIT_UPDATE_DB:-0}"
 LAST_TESTS_PASSED=0
@@ -189,14 +190,29 @@ run_coverage_analysis() {
             true
         else
             log_with_timestamp "⚠️ llvm-cov failed; attempting tarpaulin fallback"
+            # Run tarpaulin with a timeout to avoid hanging the pipeline
+            if command -v timeout >/dev/null 2>&1; then
+                (cd "$contracts_dir" && timeout 900 cargo tarpaulin --config "/app/config/tarpaulin.toml" --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
+                (cd "$contracts_dir" && timeout 900 cargo tarpaulin --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
+                echo "Coverage analysis failed or timed out" > "/app/logs/coverage/${contract_name}-coverage.log"
+            else
+            (cd "$contracts_dir" && cargo tarpaulin --config "/app/config/tarpaulin.toml" --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
+            (cd "$contracts_dir" && cargo tarpaulin --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
+            echo "Coverage analysis failed or timed out" > "/app/logs/coverage/${contract_name}-coverage.log"
+            fi
+            # Optionally skip coverage after fallback if configured
+            # Nothing more to run after fallback; we rely on tarpaulin output file as final status
+        fi
+    else
+        if command -v timeout >/dev/null 2>&1; then
+            (cd "$contracts_dir" && timeout 900 cargo tarpaulin --config "/app/config/tarpaulin.toml" --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
+            (cd "$contracts_dir" && timeout 900 cargo tarpaulin --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
+            echo "Coverage analysis failed or timed out" > "/app/logs/coverage/${contract_name}-coverage.log"
+        else
             (cd "$contracts_dir" && cargo tarpaulin --config "/app/config/tarpaulin.toml" --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
             (cd "$contracts_dir" && cargo tarpaulin --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
             echo "Coverage analysis failed or not available" > "/app/logs/coverage/${contract_name}-coverage.log"
         fi
-    else
-        (cd "$contracts_dir" && cargo tarpaulin --config "/app/config/tarpaulin.toml" --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
-        (cd "$contracts_dir" && cargo tarpaulin --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
-        echo "Coverage analysis failed or not available" > "/app/logs/coverage/${contract_name}-coverage.log"
     fi
     
     log_with_timestamp "✅ Coverage analysis completed for $contract_name"
@@ -295,7 +311,7 @@ extract_entrypoint_function() {
         local func_name=$(grep "entrypoint\!" "$file_path" | sed 's/.*entrypoint\!(\([^)]*\));.*/\1/' | tr -d ' ' | head -1)
         if [ -n "$func_name" ] && [ "$func_name" != "entrypoint" ]; then
             echo "$func_name"
-            return 0
+        return 0
         fi
     fi
     # If macro not found or extraction failed, attempt to detect a canonical function
