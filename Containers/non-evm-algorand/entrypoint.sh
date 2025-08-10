@@ -161,7 +161,7 @@ collect_performance_metrics() {
     
     # TEAL metrics with enhanced error handling
     python3 -c "
-import sys, types
+import sys, types, os, importlib
 sys.path.append('$contracts_dir/src')
 # Compatibility shim: map algosdk.future.transaction to algosdk.transaction if needed
 try:
@@ -180,13 +180,16 @@ try:
 except Exception:
     pass
 try:
-    from contract import approval_program
-    from pyteal import *
+    module_name = os.environ.get('CONTRACT_MODULE', 'contract')
+    mod = importlib.import_module(module_name)
+    if not hasattr(mod, 'approval_program'):
+        raise AttributeError(f"approval_program not found in module '{module_name}'")
+    from pyteal import compileTeal, Mode
     import json
     import time
 
     start_time = time.time()
-    teal = compileTeal(approval_program(), mode=Mode.Application, version=6)
+    teal = compileTeal(mod.approval_program(), mode=Mode.Application, version=6)
     compile_time = time.time() - start_time
 
     metrics = {
@@ -225,6 +228,7 @@ try:
     with open('/app/logs/metrics/${contract_name}-detailed-metrics.json', 'w') as f:
         json.dump(metrics, f, indent=2)
 except Exception as e:
+    import json
     error_data = {
         'error': str(e),
         'timestamp': '$(date '+%Y-%m-%d %H:%M:%S')',
@@ -399,7 +403,7 @@ run_comprehensive_tests() {
     log_with_timestamp "📝 Analyzing TEAL output..." "debug"
     cd "$contracts_dir"
     if python3 -c "
-import sys, types
+import sys, types, os, importlib
 sys.path.append('src')
 # Compatibility shim: map algosdk.future.transaction to algosdk.transaction if needed
 try:
@@ -418,7 +422,8 @@ try:
 except Exception:
     pass
 try:
-    import contract
+    module_name = os.environ.get('CONTRACT_MODULE', 'contract')
+    contract = importlib.import_module(module_name)
     from pyteal import compileTeal, Mode
     
     # Try to compile approval program
