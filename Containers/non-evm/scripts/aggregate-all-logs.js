@@ -33,7 +33,8 @@ function tryList(dir, filter = () => true) {
 }
 
 function section(title, content) {
-  return `\n\n## ${title}\n\n${content || '_No output found._'}`;
+  if (!content || !content.trim()) return '';
+  return `\n\n## ${title}\n\n${content}`;
 }
 
 // Only aggregate logs for this contract
@@ -55,7 +56,7 @@ function aggregateTestResults() {
     .filter(p => fs.existsSync(p))
     .map(p => `### File: ${path.basename(p)}\n` + tryRead(p))
     .join('\n\n');
-  return contents || '_No output found._';
+  return contents;
 }
 
 function aggregateCoverage() {
@@ -75,7 +76,7 @@ function aggregateCoverage() {
     .filter(p => fs.existsSync(p))
     .map(p => `### File: ${path.basename(p)}\n` + tryRead(p))
     .join('\n\n');
-  return contents || '_No output found._';
+  return contents;
 }
 
 const mainReportNote = `Note: After aggregation, only the main AI-enhanced report (${contractName}-report.txt) is retained in /app/logs/reports and /app/contracts/${contractName} for this contract.`;
@@ -85,24 +86,21 @@ let fullLog = '';
 fullLog += section('Security Audit (Cargo Audit)', aggregateDir('/app/logs/security', f => f.endsWith('-cargo-audit.log')));
 fullLog += section('Security Lint (Clippy)', aggregateDir('/app/logs/security', f => f.endsWith('-clippy.log')));
 fullLog += section('Test Results', aggregateTestResults());
-fullLog += section('Coverage Reports (Tarpaulin)', aggregateCoverage());
+fullLog += section('Coverage Reports', aggregateCoverage());
 fullLog += section('Performance Benchmarks', aggregateDir('/app/logs/benchmarks', f => f.endsWith('-benchmarks.log')));
 fullLog += section('Binary Size Analysis', aggregateDir('/app/logs/analysis', f => f.endsWith('-binary-size.log')));
 fullLog += section('Performance Log', tryRead('/app/logs/analysis/performance.log'));
 fullLog += section('Comprehensive Summary', aggregateDir('/app/logs/reports', f => f.endsWith('-summary.log')));
 fullLog += section('AI/Manual Reports', aggregateDir('/app/logs/reports', f => f.endsWith('.md') || f.endsWith('.txt')));
 
-fullLog += section('Tool Run Confirmation', `
-The following tools' logs were aggregated for ${contractName}:
-- Testing: Coverage (all files in /app/logs/coverage starting with ${contractName})
-- Security: Cargo Audit and Clippy (all files in /app/logs/security starting with ${contractName})
-- Performance: All logs in /app/logs/benchmarks starting with ${contractName}
-- AI/Manual reports: All .md/.txt in /app/logs/reports starting with ${contractName}
-- Other specific tool logs (excluding verbose container procedure logs)
-If any section above says "_No output found._", that tool was missing or the tool did not run.
-
-${mainReportNote}
-`);
+const includedTools = [];
+if (aggregateCoverage()) includedTools.push('Coverage');
+if (aggregateDir('/app/logs/security', f => f.endsWith('-cargo-audit.log'))) includedTools.push('Cargo Audit');
+if (aggregateDir('/app/logs/security', f => f.endsWith('-clippy.log'))) includedTools.push('Clippy');
+if (aggregateDir('/app/logs/benchmarks', f => f.endsWith('-benchmarks.log'))) includedTools.push('Benchmarks');
+if (aggregateDir('/app/logs/reports', f => f.endsWith('-summary.log'))) includedTools.push('Summary');
+if (aggregateTestResults()) includedTools.push('Tests');
+fullLog += section('Tool Run Confirmation', `The following tools had logs for ${contractName}: ${includedTools.join(', ')}\n\n${mainReportNote}`);
 
 const prompt = `
 You are an expert smart contract auditor specializing in Solana/Rust contracts.

@@ -23,8 +23,7 @@ export RUN_BENCHMARKS="${RUN_BENCHMARKS:-0}"
 export RUN_COVERAGE="${RUN_COVERAGE:-0}"
 export RUN_TESTS_RELEASE="${RUN_TESTS_RELEASE:-0}"
 export FORCE_COVERAGE="${FORCE_COVERAGE:-0}"
-export COVERAGE_TOOL="${COVERAGE_TOOL:-tarpaulin}"
-export COVERAGE_FALLBACK="${COVERAGE_FALLBACK:-0}"
+export COVERAGE_TOOL="${COVERAGE_TOOL:-llvm-cov}"
 export TEST_THREADS="${TEST_THREADS:-1}"
 export AUDIT_UPDATE_DB="${AUDIT_UPDATE_DB:-0}"
 LAST_TESTS_PASSED=0
@@ -181,37 +180,18 @@ run_coverage_analysis() {
         return 0
     fi
     log_with_timestamp "📊 Running coverage analysis for $contract_name (tool: $COVERAGE_TOOL)..."
-    if [ "$COVERAGE_TOOL" = "llvm-cov" ]; then
-        if (cd "$contracts_dir" && cargo llvm-cov --quiet --html --lcov \
-              --output-path "/app/logs/coverage/${contract_name}-lcov.info" \
-              --html-path "/app/logs/coverage/${contract_name}-coverage-html" \
-              > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1); then
-            true
-        else
-            log_with_timestamp "⚠️ llvm-cov failed; attempting tarpaulin fallback"
-            # Run tarpaulin with a timeout to avoid hanging the pipeline
-            if command -v timeout >/dev/null 2>&1; then
-                (cd "$contracts_dir" && timeout 900 cargo tarpaulin --config "/app/config/tarpaulin.toml" --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
-                (cd "$contracts_dir" && timeout 900 cargo tarpaulin --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
-                echo "Coverage analysis failed or timed out" > "/app/logs/coverage/${contract_name}-coverage.log"
-            else
-            (cd "$contracts_dir" && cargo tarpaulin --config "/app/config/tarpaulin.toml" --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
-            (cd "$contracts_dir" && cargo tarpaulin --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
-            echo "Coverage analysis failed or timed out" > "/app/logs/coverage/${contract_name}-coverage.log"
-            fi
-            # Optionally skip coverage after fallback if configured
-            # Nothing more to run after fallback; we rely on tarpaulin output file as final status
-        fi
+    # Force llvm-cov only; no tarpaulin fallback
+    if (cd "$contracts_dir" && \
+          RUSTFLAGS="$RUSTFLAGS -C instrument-coverage -C link-dead-code" \
+          LLVM_PROFILE_FILE="${contract_name}-%p-%m.profraw" \
+          cargo llvm-cov --quiet --html --lcov \
+          --output-path "/app/logs/coverage/${contract_name}-lcov.info" \
+          --html-path "/app/logs/coverage/${contract_name}-coverage-html" \
+          > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1); then
+        :
     else
-        if command -v timeout >/dev/null 2>&1; then
-            (cd "$contracts_dir" && timeout 900 cargo tarpaulin --config "/app/config/tarpaulin.toml" --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
-            (cd "$contracts_dir" && timeout 900 cargo tarpaulin --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
-            echo "Coverage analysis failed or timed out" > "/app/logs/coverage/${contract_name}-coverage.log"
-        else
-            (cd "$contracts_dir" && cargo tarpaulin --config "/app/config/tarpaulin.toml" --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
-            (cd "$contracts_dir" && cargo tarpaulin --out Html --out Xml --output-dir "/app/logs/coverage" > "/app/logs/coverage/${contract_name}-coverage.log" 2>&1) || \
-            echo "Coverage analysis failed or not available" > "/app/logs/coverage/${contract_name}-coverage.log"
-        fi
+        log_with_timestamp "❌ llvm-cov failed; coverage disabled for this run" "error"
+        echo "llvm-cov failed. See above logs." > "/app/logs/coverage/${contract_name}-coverage.log"
     fi
     
     log_with_timestamp "✅ Coverage analysis completed for $contract_name"
