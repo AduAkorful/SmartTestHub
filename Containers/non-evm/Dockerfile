@@ -71,4 +71,35 @@ ENV SCCACHE_DIR=/app/.cache/sccache
 ENV CARGO_BUILD_JOBS=12
 ENV RUSTFLAGS="-C target-cpu=native"
 
+# Prewarm a compiled target for Solana dev/test dependencies to seed first-run performance
+RUN set -eux; \
+  mkdir -p /opt/warm_project && cd /opt/warm_project && \
+  cat > Cargo.toml <<'EOF' && \
+  mkdir -p src && echo "pub fn placeholder() {}" > src/lib.rs && \
+  CARGO_TARGET_DIR=/opt/warm_target RUSTC_WRAPPER=sccache \
+    cargo generate-lockfile && \
+  CARGO_TARGET_DIR=/opt/warm_target RUSTC_WRAPPER=sccache \
+    cargo fetch && \
+  CARGO_TARGET_DIR=/opt/warm_target RUSTC_WRAPPER=sccache \
+    cargo build -q && \
+  CARGO_TARGET_DIR=/opt/warm_target RUSTC_WRAPPER=sccache \
+    cargo test --no-run -q || true && \
+  rm -rf /opt/warm_project
+[package]
+name = "warm_project"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+solana-program = "2"
+solana-sdk = "2"
+
+[dev-dependencies]
+solana-program-test = "2"
+tokio = { version = "1.0", features = ["macros", "rt"] }
+EOF
+
 ENTRYPOINT ["/app/entrypoint.sh"]

@@ -72,6 +72,11 @@ EOF
 # Clear only Solana CLI cache; keep target and sccache
 rm -rf ~/.cache/solana/cli 2>/dev/null || true
 mkdir -p "$SCCACHE_DIR" "$CARGO_TARGET_DIR"
+# If there is a prewarmed target from the image and /app/target is empty, seed it
+if [ -d "/opt/warm_target" ] && [ -z "$(ls -A "$CARGO_TARGET_DIR" 2>/dev/null)" ]; then
+  log_with_timestamp "🔥 Seeding target cache from prewarmed image artifacts"
+  cp -r /opt/warm_target/* "$CARGO_TARGET_DIR" 2>/dev/null || true
+fi
 
 LOG_FILE="/app/logs/test.log"
 ERROR_LOG="/app/logs/error.log"
@@ -530,6 +535,16 @@ test-sbf = []
 overflow-checks = true
 lto = "fat"
 codegen-units = 1
+
+[profile.dev]
+incremental = true
+codegen-units = 128
+debug = 2
+
+[profile.test]
+incremental = true
+codegen-units = 128
+debug = 2
 
 [workspace]
 EOF
